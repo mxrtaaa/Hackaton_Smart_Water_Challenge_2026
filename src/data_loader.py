@@ -1,4 +1,5 @@
 import pandas as pd
+from pathlib import Path
 
 def load_standard_file(filepath, encoding="utf-8-sig", time_column="Godzina", date_format="%d.%m.%Y %H:%M:%S"):
     df = pd.read_csv(filepath, encoding=encoding, sep=";")
@@ -77,7 +78,7 @@ if __name__ == "__main__":
     df_ry_raport_pz1 = pd.concat([df_ry_raport_pz1_1, df_ry_raport_pz1_2], ignore_index=True)
 
     df_ry_raport_pnb1 = load_standard_file(
-        "data/raw/Rybnik/Rap_godzinowy_2024-01-01_2024-12-31_423634 - PNB1.csv", 
+        "data/raw/Rybnik/Rap_godzinowy_2024-01-01_2024-12-31_423662 - PNB1.csv", 
         encoding="cp1250"
     )
 
@@ -88,7 +89,7 @@ if __name__ == "__main__":
 
     df_ry_pz1_2024 = pd.read_csv(
         "data/raw/Rybnik/PZ1_2024.csv", 
-        encoding="cp1250", 
+        encoding="utf-8-sig", 
         sep=";", 
         header=None, 
         names=columns_PNB_PZ
@@ -100,7 +101,7 @@ if __name__ == "__main__":
 
     df_ry_pnb1_2024 = pd.read_csv(
         "data/raw/Rybnik/PNB1_2024.csv", 
-        encoding="cp1250", 
+        encoding="utf-8-sig", 
         sep=";", 
         header=None, 
         names=columns_PNB_PZ
