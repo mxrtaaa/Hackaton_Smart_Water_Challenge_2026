@@ -2,6 +2,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
+from pathlib import Path
+Path("data/processed/Chorzów").mkdir(parents=True, exist_ok=True)
+
+
 df_ch_przeplyw = pd.read_csv(
     "data/raw/Chorzów/Dane do konkursu/Dane przepływowe.csv",
     encoding="cp1250",
