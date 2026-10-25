@@ -1,9 +1,9 @@
 import pandas as pd
 
-df_ch_przeplyw = pd.read_parquet('data/processed/Chorzów/przeplyw.parquet')
-df_ch_scieki = pd.read_parquet('data/processed/Chorzów/scieki.parquet')
-df_ch_awarie = pd.read_parquet('data/processed/Chorzów/awarie.parquet')
-df_ch_energia = pd.read_parquet('data/processed/Chorzów/energia.parquet')
+df_ch_przeplyw = pd.read_parquet('../data/processed/Chorzów/przeplyw.parquet')
+df_ch_scieki = pd.read_parquet('../data/processed/Chorzów/scieki.parquet')
+df_ch_awarie = pd.read_parquet('../data/processed/Chorzów/awarie.parquet')
+df_ch_energia = pd.read_parquet('../data/processed/Chorzów/energia.parquet')
 
 
 def create_5min_df(df, field, new_field):
