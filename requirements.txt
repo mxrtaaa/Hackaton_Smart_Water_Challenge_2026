@@ -7,3 +7,6 @@ seaborn
 plotly
 ruptures
 scipy
+requests_cache
+retry_requests
+openmeteo_requests
