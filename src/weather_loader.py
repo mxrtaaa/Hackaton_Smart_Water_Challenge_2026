@@ -53,26 +53,24 @@ def load_weather_data(export_path, latitude, longitude, start_date, end_date, ho
     sciezka_wyjsciowa = export_path
     Path(sciezka_wyjsciowa).parent.mkdir(parents=True, exist_ok=True)
     df_pogoda.to_parquet(sciezka_wyjsciowa)
-
 if __name__ == "__main__":
 
     # Ruda Śląska
-
-    load_weather_data('data/processed/Ruda Śląska/suma_opadow.parquet',
+    load_weather_data('../data/processed/Ruda Śląska/suma_opadow.parquet',
                       latitude='50.261259',
                       longitude='18.894069',
                       start_date='2024-01-01',
                       end_date='2026-10-24',
                       hourly='precipitation'
-                    )
+                      )
 
 
     # Chorzów
 
-    load_weather_data('data/processed/Chorzów/suma_opadow.parquet',
-                          latitude='50.292298',
-                          longitude='18.954600',
-                          start_date='2024-01-01',
-                          end_date='2026-10-24',
-                          hourly='precipitation'
-                        )
+    load_weather_data('../data/processed/Chorzów/suma_opadow.parquet',
+                      latitude='50.292298',
+                      longitude='18.954600',
+                      start_date='2024-01-01',
+                      end_date='2026-10-24',
+                      hourly='precipitation'
+                      )
