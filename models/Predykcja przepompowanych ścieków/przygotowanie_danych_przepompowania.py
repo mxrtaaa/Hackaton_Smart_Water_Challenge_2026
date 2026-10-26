@@ -1,5 +1,12 @@
 import pandas as pd
 import numpy as np
+import sys
+from pathlib import Path
+
+src_path = Path(__file__).resolve().parents[2] / 'src'
+if str(src_path) not in sys.path:
+    sys.path.append(str(src_path))
+
 from sciezka_projektu import get_project_root
 
 
