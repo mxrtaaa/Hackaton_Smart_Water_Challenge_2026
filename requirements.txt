@@ -13,3 +13,4 @@ openmeteo_requests
 lightgbm
 shap
 CatBoost
+xgboost

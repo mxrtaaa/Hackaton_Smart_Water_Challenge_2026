@@ -1,6 +1,13 @@
 import pandas as pd
 import numpy as np
-from sciezka_projektu import get_project_root
+import sys 
+from pathlib import Path
+
+src_path = Path(__file__).resolve().parents[2] / 'src'
+if str(src_path) not in sys.path:
+    sys.path.append(str(src_path))
+
+from src.sciezka_projektu import get_project_root
 
 
 def przygotuj_dane_przepompowania_z_opadami():
@@ -29,6 +36,8 @@ def przygotuj_dane_przepompowania_z_opadami():
         errors="coerce"
     )
 
+
+
     # usuwanie zer i śmieci
     df = df[df["ilosc"].notna()]
     #print(df[["ilosc"]].head(10))
@@ -54,16 +63,18 @@ def przygotuj_dane_przepompowania_z_opadami():
     df_1h.loc[df_1h["przepompowano"] < 0, "przepompowano"] = np.nan
 
     df_lgbm = df_1h.join(df_ch_opady[["suma_opadu_mm"]], how="left")
-    df_lgbm["suma_opadu_mm"] = df_lgbm["suma_opadu_mm"].fillna(0)
-
-    #print(df_lgbm.head(10))
-
-
+    #df_lgbm["suma_opadu_mm"] = df_lgbm["suma_opadu_mm"].fillna(0)
 
 
     # Dajemy modelowi kontekst kalendarzowy, ponieważ może zależeć od pory dnia i dnia tygodnia
     df_lgbm["hour"] = df_lgbm.index.hour
     df_lgbm["dayofweek"] = df_lgbm.index.day_of_week
+    df_lgbm["month"] = df_lgbm.index.month 
+    df_lgbm["weekend"] = (df_lgbm.index.day_of_week >= 5).astype(int)
+
+    #Żeby mieć cykliczność opadów
+    df_lgbm["hour_sin"] = np.sin(2 * np.pi * df_lgbm.index.hour / 24)
+    df_lgbm["hour_cos"] = np.cos(2 * np.pi * df_lgbm.index.hour / 24)
 
     #print(df_lgbm.head(10))
 
@@ -71,6 +82,7 @@ def przygotuj_dane_przepompowania_z_opadami():
 
     df_lgbm["opad_0h"] = r  # bieżąca godzina
 
+    #suma opadów z 2/3/6h itd
     for k in [2, 3, 6, 12, 24, 48]:                                             #JAK DALEKO W TYŁ MODEL MA PATRZEĆ NA OPADY (godziny)
         df_lgbm[f"opad_{k}h"] = r.rolling(k).sum()
 
@@ -80,13 +92,38 @@ def przygotuj_dane_przepompowania_z_opadami():
     df_lgbm["h_od_deszczu"] = ((df_lgbm.index.to_series() - last_rain)
                                .dt.total_seconds() / 3600).clip(upper=240)
 
-    #print(df_lgbm.head())
+    #opóźnienia opadów - czy może przepompownia reaguje na opady z opóźnieniem
+    for k in [2, 3, 6, 12, 24, 48]:                                            
+        df_lgbm[f"opad_lag_{k}h"] = r.shift(k)
+
+    #historia przepompowań
+    for k in [1, 3, 6, 24]:                                            
+        df_lgbm[f"przepompowano_lag_{k}h"] = df_lgbm[f"przepompowano"].shift(k)
+
+    df_lgbm[f"przepompowano_mean_6h"] = df_lgbm["przepompowano"].shift(1).rolling(6, min_periods=6).mean()
 
     features = [
-        "hour", "dayofweek",
-        "opad_0h", "opad_2h", "opad_3h", "opad_6h", "opad_12h",
-        "opad_24h", "opad_48h", #"opad_72h", "opad_168h",
-        "opad_max3h", "h_od_deszczu"
+        # Kalendarzowe
+        "hour", "dayofweek", "month", "weekend",
+        "hour_sin", "hour_cos",
+
+        # Opady
+        "opad_0h", "opad_2h", "opad_3h", "opad_6h",
+        "opad_12h", "opad_24h", "opad_48h",
+        "opad_max3h", "h_od_deszczu",
+
+        # Opóźnienia opadów
+        "opad_lag_2h",
+        "opad_lag_3h", "opad_lag_6h",
+        "opad_lag_12h", "opad_lag_24h",
+        "opad_lag_48h",
+
+        # Historia przepompowań
+        #"przepompowano_lag_1h",
+        #"przepompowano_lag_3h",
+        #"przepompowano_lag_6h",
+        #"przepompowano_lag_24h",
+        #"przepompowano_mean_6h"
     ]
 
     X = df_lgbm[features].copy()

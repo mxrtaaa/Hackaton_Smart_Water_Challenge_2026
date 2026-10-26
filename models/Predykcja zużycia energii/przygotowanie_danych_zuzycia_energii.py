@@ -1,6 +1,13 @@
 import pandas as pd
 import numpy as np
-from src.sciezka_projektu import get_project_root
+from pathlib import Path
+import sys
+
+src_path = Path(__file__).resolve().parents[2] / 'src'
+if str(src_path) not in sys.path:
+    sys.path.append(str(src_path))
+
+from sciezka_projektu import get_project_root
 def przygotuj_dane_zuzycia_energii():
     PROJECT_ROOT = get_project_root()
 
