@@ -7,7 +7,7 @@ src_path = Path(__file__).resolve().parents[2] / 'src'
 if str(src_path) not in sys.path:
     sys.path.append(str(src_path))
 
-from src.sciezka_projektu import get_project_root
+from sciezka_projektu import get_project_root
 
 
 def przygotuj_dane_przepompowania_z_opadami():
@@ -48,13 +48,12 @@ def przygotuj_dane_przepompowania_z_opadami():
     df = df.groupby(level=0).agg({"ilosc": "max"})
     df = df.sort_index()
 
-    df.head()
-
 
     df_ch_opady["Data_czas"] = pd.to_datetime(df_ch_opady["Data_czas"])
     df_ch_opady = df_ch_opady.set_index("Data_czas").sort_index()
 
     #print(df_ch_opady.head())
+    df_ch_opady = df_ch_opady.groupby(level=0).agg({"suma_opadu_mm": "sum"})
 
     hourly = df["ilosc"].resample("1h").last()
     df_1h = pd.DataFrame({"przepompowano": hourly.diff()})
@@ -63,7 +62,12 @@ def przygotuj_dane_przepompowania_z_opadami():
     df_1h.loc[df_1h["przepompowano"] < 0, "przepompowano"] = np.nan
 
     df_lgbm = df_1h.join(df_ch_opady[["suma_opadu_mm"]], how="left")
-    #df_lgbm["suma_opadu_mm"] = df_lgbm["suma_opadu_mm"].fillna(0)
+    df_lgbm["suma_opadu_mm"] = df_lgbm["suma_opadu_mm"].fillna(0)
+
+
+    #print(df_lgbm.head(10))
+
+
 
 
     # Dajemy modelowi kontekst kalendarzowy, ponieważ może zależeć od pory dnia i dnia tygodnia
@@ -136,10 +140,17 @@ def przygotuj_dane_przepompowania_z_opadami():
     #print("\nBraki w y:", y.isna().sum())
 
     # Usuwamy tylko wiersze z brakującą wartością docelową
-    valid_idx = y.notna()
+    first_valid = y.first_valid_index()
+    X = X.loc[first_valid:].copy()
+    y = y.loc[first_valid:].copy()
 
-    X = X.loc[valid_idx].copy()
-    y = y.loc[valid_idx].copy()
+    # Jeśli w środku były luki, wypełnij je interpolacją:
+    if y.isna().any():
+        y = y.interpolate(method="time")
+
+    # Wymuszenie metadanej częstotliwości w indeksie
+    y.index.freq = pd.infer_freq(y.index) or "1h"
+    X.index.freq = y.index.freq
 
     return X,y
 

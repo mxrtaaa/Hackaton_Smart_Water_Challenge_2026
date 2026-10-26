@@ -42,8 +42,9 @@ def przygotuj_dane_zuzycia_energii():
     df = df.groupby(level=0).agg({"energia": "max"})
     df = df.sort_index()
 
+    df_ch_opady = df_ch_opady.set_index("Data_czas").sort_index()
     df.head()
-
+    df_ch_opady = df_ch_opady.groupby(level=0).agg({"suma_opadu_mm": "sum"})
     # Godzinowe zużycie energii z licznika narastającego
     hourly = df["energia"].resample("1h").last()
 
@@ -59,6 +60,7 @@ def przygotuj_dane_zuzycia_energii():
         how="left"
     )
 
+
     #print(df_lgbm.head(10))
 
     # Kontekst kalendarzowy dla prognozowania zużycia energii
@@ -70,7 +72,6 @@ def przygotuj_dane_zuzycia_energii():
     #print(df_lgbm.head(10))
 
     r = df_lgbm["suma_opadu_mm"]
-
     # Opady z poprzednich godzin
     for k in [1, 2, 3, 6, 12, 24, 48, 72, 168]:
         df_lgbm[f"opad_{k}h"] = r.shift(1).rolling(k).sum()
@@ -114,10 +115,17 @@ def przygotuj_dane_zuzycia_energii():
     #print("\nBraki w y:", y.isna().sum())
 
     # Usuwamy tylko wiersze z brakującą wartością docelową
-    valid_idx = y.notna()
+    first_valid = y.first_valid_index()
+    X = X.loc[first_valid:].copy()
+    y = y.loc[first_valid:].copy()
 
-    X = X.loc[valid_idx].copy()
-    y = y.loc[valid_idx].copy()
+    # Jeśli w środku były luki, wypełnij je interpolacją:
+    if y.isna().any():
+        y = y.interpolate(method="time")
+
+    # Wymuszenie metadanej częstotliwości w indeksie
+    y.index.freq = pd.infer_freq(y.index) or "1h"
+    X.index.freq = y.index.freq
 
     return X,y
 
