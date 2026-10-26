@@ -11,3 +11,5 @@ requests_cache
 retry_requests
 openmeteo_requests
 lightgbm
+shap
+CatBoost
