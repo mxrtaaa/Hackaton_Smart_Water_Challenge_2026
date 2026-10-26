@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import sys 
 from pathlib import Path
+from datetime import timezone, timedelta
 
 src_path = Path(__file__).resolve().parents[2] / 'src'
 if str(src_path) not in sys.path:
@@ -24,9 +25,24 @@ def przygotuj_dane_przepompowania_z_opadami():
     df["Sposób_pomiaru"] = df["Sposób_pomiaru"].astype(str).str.strip()
     df = df[df["Sposób_pomiaru"] == "Wartość z pomiaru"].copy()
 
+    
     if "Data_czas" in df.columns:
         df["Data_czas"] = pd.to_datetime(df["Data_czas"])
         df = df.set_index("Data_czas")
+
+    # obsługa zamiany stref czasowych
+
+    if df.index.tz is None:
+        df.index = df.index.tz_localize(
+            "Europe/Warsaw",
+            ambiguous="infer",
+            nonexistent="raise"
+        )
+
+    df.index = df.index.tz_convert(
+        timezone(timedelta(hours=1))
+    )
+
 
     df = df.rename(columns={"Ilosc_przepompowanych_sciekow": "ilosc"})
 
@@ -50,10 +66,35 @@ def przygotuj_dane_przepompowania_z_opadami():
 
 
     df_ch_opady["Data_czas"] = pd.to_datetime(df_ch_opady["Data_czas"])
-    df_ch_opady = df_ch_opady.set_index("Data_czas").sort_index()
+    df_ch_opady = df_ch_opady.set_index("Data_czas")
 
-    #print(df_ch_opady.head())
-    df_ch_opady = df_ch_opady.groupby(level=0).agg({"suma_opadu_mm": "sum"})
+    fixed_tz = timezone(timedelta(hours=1))
+
+    if df_ch_opady.index.tz is None:
+        # Starszy plik opadów przechowuje polski czas lokalny
+        # bez informacji o strefie.
+        df_ch_opady.index = (
+            df_ch_opady.index
+            .tz_localize(
+                "Europe/Warsaw",
+                ambiguous="infer",
+                nonexistent="raise"
+            )
+            .tz_convert(fixed_tz)
+        )
+    else:
+        # Nowszy plik ma już przypisaną strefę.
+        df_ch_opady.index = df_ch_opady.index.tz_convert(fixed_tz)
+
+    df_ch_opady = df_ch_opady.sort_index()
+
+    df_ch_opady = df_ch_opady.groupby(level=0).agg(
+        {"suma_opadu_mm": "sum"}
+    )
+
+    print("Strefa przepływu:", df_1h.index.tz if "df_1h" in locals() else df.index.tz)
+    print("Strefa opadów:", df_ch_opady.index.tz)
+
 
     hourly = df["ilosc"].resample("1h").last()
     df_1h = pd.DataFrame({"przepompowano": hourly.diff()})

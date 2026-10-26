@@ -3,6 +3,7 @@ import requests_cache
 import pandas as pd
 from retry_requests import retry
 from pathlib import Path
+from datetime import timezone, timedelta
 
 
 def load_weather_data(export_path, latitude, longitude, start_date, end_date, hourly):
@@ -46,9 +47,14 @@ def load_weather_data(export_path, latitude, longitude, start_date, end_date, ho
     df_pogoda = pd.DataFrame(data=hourly_data)
 
 
-    # Konwersja czasu na lokalny i usunięcie znacznika strefy (tz-naive)
+    # Konwersja czasu na lokalny
 
-    df_pogoda['Data_czas'] = df_pogoda['Data_czas'].dt.tz_convert('Europe/Warsaw').dt.tz_localize(None)
+    
+    df_pogoda["Data_czas"] = (
+        df_pogoda["Data_czas"]
+        .dt.tz_convert(timezone(timedelta(hours=1)))
+    )
+
 
     sciezka_wyjsciowa = export_path
     Path(sciezka_wyjsciowa).parent.mkdir(parents=True, exist_ok=True)
