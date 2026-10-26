@@ -112,20 +112,5 @@ def przygotuj_dane_zuzycia_energii():
     X = X.loc[valid_idx].copy()
     y = y.loc[valid_idx].copy()
 
-    train_end = int(len(X) * 0.7)
-    val_end = int(len(X) * 0.85)
-
-    X_train = X.iloc[:train_end]
-    X_val = X.iloc[train_end:val_end]
-    X_test = X.iloc[val_end:]
-
-    y_train = y.iloc[:train_end]
-    y_val = y.iloc[train_end:val_end]
-    y_test = y.iloc[val_end:]
-
-    #print("TRAIN:", X_train.shape, X_train.index.min(), X_train.index.max())
-    #print("VAL:", X_val.shape, X_val.index.min(), X_val.index.max())
-    #print("TEST:", X_test.shape, X_test.index.min(), X_test.index.max())
-
-    return X_train, X_val, X_test, y_train, y_val, y_test
+    return X,y
 
