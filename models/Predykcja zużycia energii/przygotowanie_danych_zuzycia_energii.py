@@ -6,7 +6,8 @@ import sys
 src_path = Path(__file__).resolve().parents[2] / 'src'
 if str(src_path) not in sys.path:
     sys.path.append(str(src_path))
-from src.sciezka_projektu import get_project_root
+
+from sciezka_projektu import get_project_root
 def przygotuj_dane_zuzycia_energii():
     PROJECT_ROOT = get_project_root()
 
