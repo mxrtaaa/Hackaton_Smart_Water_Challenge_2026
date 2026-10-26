@@ -1,5 +1,11 @@
 import pandas as pd
 import numpy as np
+from pathlib import Path
+import sys
+
+src_path = Path(__file__).resolve().parents[2] / 'src'
+if str(src_path) not in sys.path:
+    sys.path.append(str(src_path))
 from src.sciezka_projektu import get_project_root
 def przygotuj_dane_zuzycia_energii():
     PROJECT_ROOT = get_project_root()
@@ -35,6 +41,7 @@ def przygotuj_dane_zuzycia_energii():
     df = df.groupby(level=0).agg({"energia": "max"})
     df = df.sort_index()
 
+    df_ch_opady = df_ch_opady.set_index("Data_czas").sort_index()
     df.head()
 
     # Godzinowe zużycie energii z licznika narastającego
@@ -52,6 +59,7 @@ def przygotuj_dane_zuzycia_energii():
         how="left"
     )
 
+
     #print(df_lgbm.head(10))
 
     # Kontekst kalendarzowy dla prognozowania zużycia energii
@@ -63,7 +71,6 @@ def przygotuj_dane_zuzycia_energii():
     #print(df_lgbm.head(10))
 
     r = df_lgbm["suma_opadu_mm"]
-
     # Opady z poprzednich godzin
     for k in [1, 2, 3, 6, 12, 24, 48, 72, 168]:
         df_lgbm[f"opad_{k}h"] = r.shift(1).rolling(k).sum()
