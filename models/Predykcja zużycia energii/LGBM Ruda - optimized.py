@@ -8,8 +8,10 @@ from przygotowanie_danych_zuzycia_energii import przygotuj_dane_zuzycia_energii
 from energia_ruda_dane import przygotuj_dane as przygotuj_dane_energia
 
 X_energia,Y_energia = przygotuj_dane_energia()
-models_path = Path.cwd().parents[0]
-sys.path.append(str(models_path / "Predykcja przepompowanych ścieków"))
+
+models_path = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(models_path / "Predykcja przepompowanych ścieków"))
+
 from przepompowanie_ruda_dane import przygotuj_dane as przygotuj_dane_przeplyw
 
 X_przeplyw,Y_przeplyw = przygotuj_dane_przeplyw()
@@ -80,6 +82,27 @@ final_lgbm_q97 = LGBMRegressor(
 final_lgbm_q97.fit(X_train, y_train,)
 
 q97_preds = final_lgbm_q97.predict(X_test)
+
+# DO ANALIZY BIZNESOWEJ
+
+from sciezka_projektu import get_project_root
+
+results_test = pd.DataFrame({
+    "rzeczywiste": y_test,
+    "prognoza": y_pred_test,
+    "q97": q97_preds,
+}, index=y_test.index)
+
+results_test["alarm"] = results_test["rzeczywiste"] > results_test["q97"]
+
+output = get_project_root() / "reports" / "models"
+output.mkdir(parents=True, exist_ok=True)
+
+results_test.to_parquet(output / "ruda_energia.parquet")
+print("Zapisano:", output / "ruda_energia.parquet")
+
+#################
+
 
 test_coverage = np.mean(y_test <= q97_preds)
 print(f"\nFinalne Coverage na zbiorze testowym: {test_coverage * 100:.2f}% (cel: 97.00%)")

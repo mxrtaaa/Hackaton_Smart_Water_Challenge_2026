@@ -4,10 +4,7 @@ import numpy as np
 import sys
 from pathlib import Path
 
-
 from sklearn.metrics import mean_absolute_error, mean_squared_error
-
-
 
 from przepompowanie_ruda_dane import przygotuj_dane
 
@@ -49,8 +46,6 @@ final_mae = np.mean(np.abs(y_test - y_pred_test))
 print(f"\nOstateczne MAE na zbiorze TESTOWYM: {final_mae:.4f}")
 
 
-
-
 best_params_q97 = {'learning_rate': 0.04219308168946424, 'depth': 8, 'l2_leaf_reg': 17.716889733344214, 'random_strength': 1.9196245935896221}
 
 final_cb_q97 = CatBoostRegressor(
@@ -66,10 +61,29 @@ final_cb_q97.fit(X_train, y_train)
 
 q97_preds = final_cb_q97.predict(X_test)
 
+# DO ANALIZY BIZNESOWEJ #########
+
+from sciezka_projektu import get_project_root
+
+results_test = pd.DataFrame({
+    "rzeczywiste": y_test,
+    "prognoza": y_pred_test,
+    "q97": q97_preds,
+}, index=y_test.index)
+
+results_test["alarm"] = results_test["rzeczywiste"] > results_test["q97"]
+
+output = get_project_root() / "reports" / "models"
+output.mkdir(parents=True, exist_ok=True)
+
+results_test.to_parquet(output / "ruda_przeplyw.parquet")
+print("Zapisano:", output / "ruda_przeplyw.parquet")
+
+
+############################
+
 test_coverage = np.mean(y_test <= q97_preds)
 print(f"\nFinalne Coverage na zbiorze testowym: {test_coverage * 100:.2f}% (cel: 97.00%)")
-
-
 
 
 # ZAPIS MODELOW DO PLIKOW
