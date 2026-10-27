@@ -5,8 +5,8 @@ import sys
 from lightgbm import LGBMRegressor
 from przygotowanie_danych_zuzycia_energii import przygotuj_dane_zuzycia_energii
 
-models_path = Path.cwd().parents[0]
-sys.path.append(str(models_path / "Predykcja przepompowanych ścieków"))
+models_path = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(models_path / "Predykcja przepompowanych ścieków"))
 
 from przygotowanie_danych_przepompowania import przygotuj_dane_przepompowania_z_opadami
 
@@ -68,6 +68,29 @@ final_lgbm_q97 = LGBMRegressor(
 final_lgbm_q97.fit(X_train, y_train,)
 
 q97_preds = final_lgbm_q97.predict(X_test)
+
+# DO ANALIZY BIZNESOWEJ ##########
+
+from sciezka_projektu import get_project_root
+
+results_test = pd.DataFrame({
+    "rzeczywiste": y_test,
+    "prognoza": y_pred_test,
+    "q97": q97_preds,
+}, index=y_test.index)
+
+results_test["alarm"] = (
+    results_test["rzeczywiste"] > results_test["q97"]
+)
+
+output = get_project_root() / "reports" / "models"
+output.mkdir(parents=True, exist_ok=True)
+
+results_test.to_parquet(output / "chorzow_energia.parquet")
+
+print("Zapisano:", output / "chorzow_energia.parquet")
+
+############################
 
 test_coverage = np.mean(y_test <= q97_preds)
 print(f"\nFinalne Coverage na zbiorze testowym: {test_coverage * 100:.2f}% (cel: 97.00%)")
