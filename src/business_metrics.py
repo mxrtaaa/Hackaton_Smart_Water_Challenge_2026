@@ -80,38 +80,93 @@ def classify_weather_periods(
 
 
 def calculate_dry_baseline(df, min_samples=5):
-    """Mediana przepływu i energii w podobnych suchych godzinach."""
-
     result = df.copy()
-    features = ["miesiac", "godzina", "weekend"]
 
+    required = {
+        "okres", "miesiac", "godzina", "weekend",
+        "przepompowano_m3", "energia_kwh"
+    }
+
+    missing = required - set(result.columns)
+    if missing:
+        raise KeyError(f"Brakuje kolumn: {sorted(missing)}")
+
+    # Do baseline'u bierzemy tylko suche godziny
+    # z kompletnymi pomiarami przepływu i energii.
     dry = result.loc[
         result["okres"].eq("suchy")
         & result[
             ["przepompowano_m3", "energia_kwh"]
         ].notna().all(axis=1)
-    ]
+    ].copy()
 
-    if dry.empty:
-        raise ValueError("Brak poprawnych pomiarów z okresów suchych.")
+    if len(dry) < min_samples:
+        raise ValueError("Za mało kompletnych godzin suchych.")
 
-    baseline = dry.groupby(features).agg(
-        bazowe_m3=("przepompowano_m3", "median"),
-        bazowe_kwh=("energia_kwh", "median"),
-        n_suchych=("energia_kwh", "size")
+    result["bazowe_m3"] = np.nan
+    result["bazowe_kwh"] = np.nan
+
+    result["baseline_zrodlo"] = pd.Series(
+        pd.NA, index=result.index, dtype="string"
     )
 
-    # Nie wyznaczamy baseline'u z bardzo małej próbki.
-    insufficient = baseline["n_suchych"] < min_samples
+    result["baseline_n"] = pd.Series(
+        pd.NA, index=result.index, dtype="Int64"
+    )
 
-    baseline.loc[
-        insufficient,
-        ["bazowe_m3", "bazowe_kwh"]
-    ] = np.nan
+    levels = [(
+            "miesiac+godzina+weekend",
+            ["miesiac", "godzina", "weekend"]
+        ), (
+            "miesiac+godzina",
+            ["miesiac", "godzina"]
+        ), (
+            "godzina+weekend",
+            ["godzina", "weekend"]
+        ),(
+            "godzina",
+            ["godzina"]
+        ),(
+            "miesiac",
+            ["miesiac"]
+        )
+    ]
 
-    result = result.join(baseline, on=features)
+    for label, keys in levels:
+        stats = dry.groupby(keys).agg(
+            candidate_m3=("przepompowano_m3", "median"),
+            candidate_kwh=("energia_kwh", "median"),
+            n=("przepompowano_m3", "size")
+        )
+
+        candidates = result[keys].join(stats, on=keys)
+
+        # Wypełniamy wyłącznie jeszcze nieuzupełnione
+        # baseline'y i tylko z odpowiednio dużej próbki.
+        use = (
+            result["bazowe_m3"].isna()
+            & candidates["n"].ge(min_samples)
+            & candidates[
+                ["candidate_m3", "candidate_kwh"]
+            ].notna().all(axis=1)
+        )
+
+        result.loc[use, "bazowe_m3"] = (
+            candidates.loc[use, "candidate_m3"]
+        )
+
+        result.loc[use, "bazowe_kwh"] = (
+            candidates.loc[use, "candidate_kwh"]
+        )
+
+        result.loc[use, "baseline_zrodlo"] = label
+
+        result.loc[use, "baseline_n"] = (
+            candidates.loc[use, "n"].astype("Int64")
+        )
 
     return result
+
 
 
 def calculate_excess(df, price_per_kwh=1.0):
