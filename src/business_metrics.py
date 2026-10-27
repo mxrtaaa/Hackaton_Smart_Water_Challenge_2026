@@ -4,22 +4,6 @@ import numpy as np
 
 CENA_ENERGII = 1.0  # zł/kWh
 
-def print_info(df):
-    print(df.head(10))
-    print("\nBraki danych:")
-    print(df.isna().sum())
-    print("\nStrefa czasowa:", df.index.tz)
-
-    df["koszt_energii_zl"] = (
-        df["energia_kwh"] * CENA_ENERGII
-    )
-
-    print(
-        "Łączny koszt energii:",
-        round(df["koszt_energii_zl"].sum(), 2),
-        "zł"
-    )
-
 def classify_weather_periods(
     df,
     dry_mm_48h=0.2,
@@ -255,3 +239,88 @@ def summarize_rain_events(df, price_per_kwh=1.0):
     return episodes.sort_values(
         "koszt_zl", ascending=False
     )
+
+def run_business_analysis(
+    df,
+    price=1.0,
+    dry_mm_48h=0.2,
+    wet_mm_24h=1.0,
+    min_samples=5
+):
+    """
+    df: godzinowy DataFrame z kolumnami:
+        przepompowano_m3, energia_kwh, opad_mm
+    """
+
+    # 1. Podział na okresy suche i mokre
+    df = classify_weather_periods(
+        df,
+        dry_mm_48h=dry_mm_48h,
+        wet_mm_24h=wet_mm_24h
+    )
+
+    # 2. Bazowy przepływ i zużycie energii
+    df = calculate_dry_baseline(
+        df,
+        min_samples=min_samples
+    )
+
+    # 3. Nadwyżki
+    df = calculate_excess(
+        df,
+        price_per_kwh=price
+    )
+
+    # 4. Ranking epizodów
+    episodes = summarize_rain_events(
+        df,
+        price_per_kwh=price
+    )
+
+    # 5. Podsumowanie miesięczne
+    wet = df.loc[df["okres"] == "mokry"].copy()
+
+    wet["miesiac"] = (
+        wet.index
+        .tz_convert("Europe/Warsaw")
+        .strftime("%Y-%m")
+    )
+
+    monthly = wet.groupby("miesiac").agg(
+        godziny_mokre=("okres", "size"),
+        godziny_wycenione=("nadwyzka_kwh", "count"),
+        nadwyzka_m3=(
+            "nadwyzka_m3",
+            lambda x: x.sum(min_count=1)
+        ),
+        nadwyzka_kwh=(
+            "nadwyzka_kwh",
+            lambda x: x.sum(min_count=1)
+        )
+    )
+
+    monthly["pokrycie"] = (
+        monthly["godziny_wycenione"]
+        / monthly["godziny_mokre"]
+    )
+
+    monthly["bilans_zl"] = (
+        monthly["nadwyzka_kwh"] * price
+    )
+
+    # 6. Najważniejsze liczby
+    summary = pd.Series({
+        "godziny_mokre": len(wet),
+        "godziny_wycenione": wet["nadwyzka_kwh"].count(),
+        "pelne_epizody": int(episodes["kompletny"].sum()),
+        "koszt_pelnych_epizodow_zl": (
+            episodes["koszt_zl"].sum()
+        )
+    })
+
+    return {
+        "detail": df,
+        "episodes": episodes,
+        "monthly": monthly,
+        "summary": summary
+    }

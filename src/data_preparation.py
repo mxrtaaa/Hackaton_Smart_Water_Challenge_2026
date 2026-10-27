@@ -5,7 +5,8 @@ from datetime import timezone, timedelta
 def set_timezone(
     df,
     time_col="Data_czas",
-    target_tz=timezone(timedelta(hours=1))
+    target_tz=timezone(timedelta(hours=1)),
+    ambiguous="infer"
 ):
     """
     Konwertuje znaczniki czasu na stałe UTC+1 (domyślnie).
@@ -37,7 +38,7 @@ def set_timezone(
     if result.index.tz is None:
         result.index = result.index.tz_localize(
             "Europe/Warsaw",
-            ambiguous="infer",
+            ambiguous=ambiguous,
             nonexistent="raise"
         )
 
