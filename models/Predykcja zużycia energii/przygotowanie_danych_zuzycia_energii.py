@@ -39,11 +39,6 @@ def przygotuj_dane_zuzycia_energii():
 
     #print(df[["energia"]].head(10))
 
-    # Usuwamy zduplikowane daty, zachowując największy odczyt licznika energii
-    df = df.groupby(level=0).agg({"energia": "max"})
-    df = df.sort_index()
-
-    df_ch_opady = df_ch_opady.set_index("Data_czas").sort_index()
     df.head()
     df_ch_opady = df_ch_opady.groupby(level=0).agg({"suma_opadu_mm": "sum"})
     # Godzinowe zużycie energii z licznika narastającego

@@ -36,39 +36,11 @@ def przygotuj_dane_przepompowania_z_opadami():
         errors="coerce"
     )
 
-
-
     # usuwanie zer i śmieci
     df = df[df["ilosc"].notna()]
     #print(df[["ilosc"]].head(10))
-
-
-
-    # Mamy zduplikowane daty (najprawdopodobniej wynikają ze zmiany czasu na zimowy/letni), więc zachowamy te największe odczyty dla każdej daty
-    df = df.groupby(level=0).agg({"ilosc": "max"})
-    df = df.sort_index()
-
-
-    df_ch_opady["Data_czas"] = pd.to_datetime(df_ch_opady["Data_czas"])
-    df_ch_opady = df_ch_opady.set_index("Data_czas")
-
-    fixed_tz = timezone(timedelta(hours=1))
-
-    if df_ch_opady.index.tz is None:
-        # Starszy plik opadów przechowuje polski czas lokalny
-        # bez informacji o strefie.
-        df_ch_opady.index = (
-            df_ch_opady.index
-            .tz_localize(
-                "Europe/Warsaw",
-                ambiguous="infer",
-                nonexistent="raise"
-            )
-            .tz_convert(fixed_tz)
-        )
-    else:
-        # Nowszy plik ma już przypisaną strefę.
-        df_ch_opady.index = df_ch_opady.index.tz_convert(fixed_tz)
+    
+    df_ch_opady = set_timezone(df_ch_opady)
 
     df_ch_opady = df_ch_opady.sort_index()
 
