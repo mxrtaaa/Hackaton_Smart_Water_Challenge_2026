@@ -107,7 +107,6 @@ def _validate_pair(y_true, y_pred):
 
     return actual, predicted
 
-
 def mase(y_true, y_pred, y_train, m=24):
     """Mean Absolute Scaled Error.
 
