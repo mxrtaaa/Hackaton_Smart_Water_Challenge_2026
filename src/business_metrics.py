@@ -53,7 +53,6 @@ def classify_weather_periods(
         "okres"
     ] = "mokry"
 
-    # Do profilu dobowego używamy czasu lokalnego.
     local_time = result.index.tz_convert("Europe/Warsaw")
 
     result["miesiac"] = local_time.month

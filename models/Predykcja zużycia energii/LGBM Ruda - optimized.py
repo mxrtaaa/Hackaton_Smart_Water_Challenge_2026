@@ -48,7 +48,6 @@ y_train = y.iloc[:train_end]
 y_test = y.iloc[train_end:]
 
 
-
 best_params_l1 = {'learning_rate': 0.049116933567479586, 'num_leaves': 11, 'min_child_samples': 20, 'subsample': 0.8961580569651143, 'colsample_bytree': 0.9013106236449329, 'reg_alpha': 1.7868742439638265, 'reg_lambda': 0.009965203822210505}
 
 # 2. Finalny trening na sztywnej liczbie drzew
@@ -83,7 +82,8 @@ final_lgbm_q97.fit(X_train, y_train,)
 
 q97_preds = final_lgbm_q97.predict(X_test)
 
-# DO ANALIZY BIZNESOWEJ
+
+# DO ANALIZY BIZNESOWEJ ##########
 
 from sciezka_projektu import get_project_root
 

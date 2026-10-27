@@ -9,7 +9,6 @@ from sciezka_projektu import get_project_root
 ROOT = get_project_root()
 MODELS = ROOT / "reports" / "models"
 
-# Obiekt: (katalog raportu biznesowego, modele)
 OBIEKTY = {
     "CHORZÓW": (
         "chorzow",

@@ -23,7 +23,6 @@ y_test = y.iloc[train_end:]
 #print("TEST:", X_test.shape, X_test.index.min(), X_test.index.max())
 
 
-
 best_params_median = {'learning_rate': 0.09521729019895707, 'depth': 7, 'l2_leaf_reg': 11.7430155996537, 'random_strength': 0.06321982183043345}
 # CATBOOST
 from catboost import CatBoostRegressor
@@ -61,6 +60,7 @@ final_cb_q97.fit(X_train, y_train)
 
 q97_preds = final_cb_q97.predict(X_test)
 
+
 # DO ANALIZY BIZNESOWEJ #########
 
 from sciezka_projektu import get_project_root
@@ -78,7 +78,6 @@ output.mkdir(parents=True, exist_ok=True)
 
 results_test.to_parquet(output / "ruda_przeplyw.parquet")
 print("Zapisano:", output / "ruda_przeplyw.parquet")
-
 
 ############################
 

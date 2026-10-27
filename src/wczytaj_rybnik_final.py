@@ -21,7 +21,7 @@ POGODA = WEJSCIE / "suma_opadow.parquet"
 # Tryb "licznik" = stan narastający: ostatni odczyt w godzinie, potem różnica.
 # Tryb "godzinowe" = gotowe m³ lub kWh za godzinę: bez różnicowania.
 # W logu bez nagłówków kolumna wartości nazywa się "Wartosc".
-# Jeżeli w logu występuje kilka nazw liczników, wpisz właściwą w "licznik_nazwa".
+# Jeżeli w logu występuje kilka nazw liczników, wpisujemy właściwą w "licznik_nazwa".
 STACJE = {
     "PZ1": {
         "przeplyw_plik": WEJSCIE / "PZ1_2024.csv",
@@ -46,11 +46,10 @@ STACJE = {
 }
 
 # Daty potwierdzonych błędów pomiaru (jeśli występują w nowym pliku).
-# Podaj dokładne przedziały, nie zgaduj ich z przybliżonego opisu mentorów.
-# Przykład: "PZ1": [("2024-03-05 00:00", "2024-03-20 23:00")]
+# np "PZ1": [("2024-03-05 00:00", "2024-03-20 23:00")]
 WYKLUCZONE_OKRESY = {"PZ1": [], "PNB1": []}
 
-STREFA = timezone(timedelta(hours=1))  # stałe UTC+1, tak jak w analizie biznesowej
+STREFA = timezone(timedelta(hours=1))
 LOG_KOLUMNY = ["Data", "Godzina", "Licznik", "Wartosc", "Sposob_pomiaru"]
 
 # ====================== PRZETWARZANIE DANYCH =========================
@@ -186,7 +185,7 @@ def przeplyw(stacja, cfg):
         df, cfg["przeplyw_kolumna"], cfg["przeplyw_tryb"], "przepompowano_m3"
     )
 
-    # Odrzucamy znane, potwierdzone wadliwe okresy (również ich prawą granicę).
+    # Odrzucamy wadliwe okresy
     for start, koniec in WYKLUCZONE_OKRESY[stacja]:
         a = pd.Timestamp(start).tz_localize("Europe/Warsaw").tz_convert(STREFA)
         b = pd.Timestamp(koniec).tz_localize("Europe/Warsaw").tz_convert(STREFA)
