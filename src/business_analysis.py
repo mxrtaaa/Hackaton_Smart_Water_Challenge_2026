@@ -3,6 +3,7 @@ from pathlib import Path
 
 from data_preparation import convert_meter_data, set_timezone
 from business_metrics import run_business_analysis
+from scada_prepare_data import load_scada_weterani
 
 DATA_PATH = Path("./data/processed/Chorzów")
 
@@ -58,12 +59,12 @@ print(wynik_chorzow["monthly"])
 
 # eksport do plików
 
-# Path("reports/business/chorzow").mkdir(parents=True, exist_ok=True)
+output = Path("reports/chorzow")
+output.mkdir(parents=True, exist_ok=True)
 
-# wynik["episodes"].to_csv("reports/business/chorzow/epizody.csv")
-# wynik["monthly"].to_csv("reports/business/chorzow/miesiace.csv")
-
-# RUDA ŚLĄSKA
+wynik_chorzow["detail"].to_parquet(
+    output / "godziny.parquet"
+)
 
 
 # RUDA ŚLĄSKA
@@ -95,10 +96,13 @@ for stacja in ["weteranow", "zmp"]:
 
     print(f"\n========== {stacja.upper()} ==========")
 
-    scada = pd.read_parquet(
-        RUDA_PATH / f"scada-{stacja}.parquet",
-        columns=["DataCzas", "LicznikSciekow"]
-    )
+    if stacja == "weteranow":
+        scada = load_scada_weterani()
+    else: 
+        scada = pd.read_parquet(
+            RUDA_PATH / f"scada-{stacja}.parquet",
+            columns=["DataCzas", "LicznikSciekow"]
+        )
 
     # Czas normalizujemy PRZED sortowaniem.
     scada = set_timezone(scada, time_col="DataCzas")
@@ -211,7 +215,7 @@ for stacja in ["weteranow", "zmp"]:
 
     # Opady z poprzedniego bloku analizy Rudy
     df = energia_h.to_frame().join(
-        opady_h, how="left"
+        df_rs_opady_h, how="left"
     )
 
     df = classify_weather_periods(df)
