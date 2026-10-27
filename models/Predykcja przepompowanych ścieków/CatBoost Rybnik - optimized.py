@@ -74,5 +74,5 @@ print(f"\nFinalne Coverage na zbiorze testowym: {test_coverage * 100:.2f}% (cel:
 
 # ZAPIS MODELOW DO PLIKOW
 
-final_cb_median.save_model("rybnik_przepompowanie_median.cbm")
-final_cb_q97.save_model("rybnik_przepompowanie_q97.cbm")
+final_cb_median.save_model("rybnik_przepompowanie_pz1_median.cbm")
+final_cb_q97.save_model("rybnik_przepompowanie_pz1_q97.cbm")
