@@ -3,6 +3,10 @@ import requests_cache
 import pandas as pd
 from retry_requests import retry
 from pathlib import Path
+from datetime import timezone, timedelta
+from sciezka_projektu import get_project_root
+
+DATA_PATH = get_project_root() / "data" / "processed"
 
 
 def load_weather_data(export_path, latitude, longitude, start_date, end_date, hourly):
@@ -46,9 +50,14 @@ def load_weather_data(export_path, latitude, longitude, start_date, end_date, ho
     df_pogoda = pd.DataFrame(data=hourly_data)
 
 
-    # Konwersja czasu na lokalny i usunięcie znacznika strefy (tz-naive)
+    # Konwersja czasu na lokalny
 
-    df_pogoda['Data_czas'] = df_pogoda['Data_czas'].dt.tz_convert('Europe/Warsaw').dt.tz_localize(None)
+    
+    df_pogoda["Data_czas"] = (
+        df_pogoda["Data_czas"]
+        .dt.tz_convert(timezone(timedelta(hours=1)))
+    )
+
 
     sciezka_wyjsciowa = export_path
     Path(sciezka_wyjsciowa).parent.mkdir(parents=True, exist_ok=True)
@@ -56,21 +65,34 @@ def load_weather_data(export_path, latitude, longitude, start_date, end_date, ho
 if __name__ == "__main__":
 
     # Ruda Śląska
-    load_weather_data('../data/processed/Ruda Śląska/suma_opadow.parquet',
-                      latitude='50.261259',
-                      longitude='18.894069',
-                      start_date='2024-01-01',
-                      end_date='2026-10-24',
-                      hourly='precipitation'
-                      )
+    load_weather_data(
+        DATA_PATH / "Ruda Śląska" / "suma_opadow.parquet",
+        latitude='50.261259',
+        longitude='18.894069',
+        start_date='2024-01-01',
+        end_date='2026-10-24',
+        hourly='precipitation'
+        )
 
 
     # Chorzów
 
-    load_weather_data('../data/processed/Chorzów/suma_opadow.parquet',
-                      latitude='50.292298',
-                      longitude='18.954600',
-                      start_date='2024-01-01',
-                      end_date='2026-10-24',
-                      hourly='precipitation'
-                      )
+    load_weather_data(
+        DATA_PATH / "Chorzów" / "suma_opadow.parquet",
+        latitude='50.292298',
+        longitude='18.954600',
+        start_date='2024-01-01',
+        end_date='2026-10-24',
+        hourly='precipitation'
+        )
+
+    # Rybnik
+
+    load_weather_data(
+        DATA_PATH / "Rybnik" / "suma_opadow.parquet",
+        latitude="50.114718",
+        longitude="18.533368",
+        start_date="2024-01-01",
+        end_date="2026-10-24",
+        hourly="precipitation"
+    )

@@ -8,6 +8,7 @@ if str(src_path) not in sys.path:
     sys.path.append(str(src_path))
 
 from sciezka_projektu import get_project_root
+from data_preparation import set_timezone
 
 
 def przygotuj_dane_przepompowania_z_opadami():
@@ -24,9 +25,8 @@ def przygotuj_dane_przepompowania_z_opadami():
     df["Sposób_pomiaru"] = df["Sposób_pomiaru"].astype(str).str.strip()
     df = df[df["Sposób_pomiaru"] == "Wartość z pomiaru"].copy()
 
-    if "Data_czas" in df.columns:
-        df["Data_czas"] = pd.to_datetime(df["Data_czas"])
-        df = df.set_index("Data_czas")
+    
+    df = set_timezone(df)
 
     df = df.rename(columns={"Ilosc_przepompowanych_sciekow": "ilosc"})
 
@@ -36,22 +36,21 @@ def przygotuj_dane_przepompowania_z_opadami():
         errors="coerce"
     )
 
-
     # usuwanie zer i śmieci
     df = df[df["ilosc"].notna()]
     #print(df[["ilosc"]].head(10))
+    
+    df_ch_opady = set_timezone(df_ch_opady)
 
+    df_ch_opady = df_ch_opady.sort_index()
 
-    # Mamy zduplikowane daty (najprawdopodobniej wynikają ze zmiany czasu na zimowy/letni), więc zachowamy te największe odczyty dla każdej daty
-    df = df.groupby(level=0).agg({"ilosc": "max"})
-    df = df.sort_index()
+    df_ch_opady = df_ch_opady.groupby(level=0).agg(
+        {"suma_opadu_mm": "sum"}
+    )
 
+    print("Strefa przepływu:", df_1h.index.tz if "df_1h" in locals() else df.index.tz)
+    print("Strefa opadów:", df_ch_opady.index.tz)
 
-    df_ch_opady["Data_czas"] = pd.to_datetime(df_ch_opady["Data_czas"])
-    df_ch_opady = df_ch_opady.set_index("Data_czas").sort_index()
-
-    #print(df_ch_opady.head())
-    df_ch_opady = df_ch_opady.groupby(level=0).agg({"suma_opadu_mm": "sum"})
 
     hourly = df["ilosc"].resample("1h").last()
     df_1h = pd.DataFrame({"przepompowano": hourly.diff()})

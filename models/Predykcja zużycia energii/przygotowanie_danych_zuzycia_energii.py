@@ -8,6 +8,9 @@ if str(src_path) not in sys.path:
     sys.path.append(str(src_path))
 
 from sciezka_projektu import get_project_root
+from data_preparation import set_timezone
+
+
 def przygotuj_dane_zuzycia_energii():
     PROJECT_ROOT = get_project_root()
 
@@ -21,9 +24,7 @@ def przygotuj_dane_zuzycia_energii():
     df["Sposób_pomiaru"] = df["Sposób_pomiaru"].astype(str).str.strip()
     df = df[df["Sposób_pomiaru"] == "Wartość z pomiaru"].copy()
 
-    if "Data_czas" in df.columns:
-        df["Data_czas"] = pd.to_datetime(df["Data_czas"])
-        df = df.set_index("Data_czas")
+    df = set_timezone(df)
 
     df = df.rename(columns={"Zuzycie_energii_elektrycznej": "energia"})
 
@@ -38,11 +39,6 @@ def przygotuj_dane_zuzycia_energii():
 
     #print(df[["energia"]].head(10))
 
-    # Usuwamy zduplikowane daty, zachowując największy odczyt licznika energii
-    df = df.groupby(level=0).agg({"energia": "max"})
-    df = df.sort_index()
-
-    df_ch_opady = df_ch_opady.set_index("Data_czas").sort_index()
     df.head()
     df_ch_opady = df_ch_opady.groupby(level=0).agg({"suma_opadu_mm": "sum"})
     # Godzinowe zużycie energii z licznika narastającego
