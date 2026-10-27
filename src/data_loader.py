@@ -1,5 +1,9 @@
 import pandas as pd
 from pathlib import Path
+if __package__:
+    from .data_preparation import convert_meter_data, set_timezone
+else:
+    from data_preparation import convert_meter_data, set_timezone
 
 def load_standard_file(filepath, encoding="utf-8-sig", time_column="Godzina", date_format="%d.%m.%Y %H:%M:%S"):
     df = pd.read_csv(filepath, encoding=encoding, sep=";")
@@ -19,6 +23,106 @@ def load_scada_files(base_dir, station, years, columns):
     df_combined = pd.concat(dfs, ignore_index=True)
     df_combined['DataCzas'] = pd.to_datetime(df_combined['DataCzas'].astype(str), format='%Y-%m-%d %H:%M:%S.%f')
     return df_combined
+
+
+def chorzow_processed_paths(root):
+    """Pliki pomiarów i opadów Chorzowa, bez zależności od aplikacji UI."""
+    parent = Path(root) / "data" / "processed"
+    folder = next((p for p in parent.iterdir() if p.is_dir() and p.name.casefold() == "chorzów"), None)
+    if folder is None:
+        raise FileNotFoundError("Brak folderu data/processed/Chorzów.")
+    return [folder / name for name in ("scieki.parquet", "energia.parquet", "suma_opadow.parquet")]
+
+
+def load_processed_chorzow(root):
+    """Godzinowe pomiary i ich pochodzenie; braki pozostają nieznane.
+
+    Liczniki narastające przetwarza istniejące convert_meter_data z
+    data_preparation. Nie interpolujemy i nie wypełniamy braków zerami.
+    """
+    root = Path(root)
+    wastewater, energy, weather = chorzow_processed_paths(root)
+    series, source_info = [], []
+    for path, column, output in ((wastewater, "Ilosc_przepompowanych_sciekow", "przepompowano_m3"),
+                                 (energy, "Zuzycie_energii_elektrycznej", "energia_kwh")):
+        raw = pd.read_parquet(path)
+        hourly = convert_meter_data(raw, column, output)
+        measured = raw.loc[raw["Sposób_pomiaru"].astype(str).str.strip().eq("Wartość z pomiaru")]
+        measured = set_timezone(measured)
+        end = measured.index.max()
+        # Ostatni przedział nie ma jeszcze następnej pełnej granicy godziny.
+        hourly = hourly.loc[hourly.index < end.floor("h")]
+        if hourly.dropna().empty:
+            raise ValueError(f"Brak kompletnych godzin pomiaru w {path.name}.")
+        series.append(hourly)
+        source_info.append({"file": str(path.relative_to(root)), "column": column,
+                            "rawRows": len(raw), "rawStart": measured.index.min().isoformat(),
+                            "rawEnd": end.isoformat(), "lastCompleteHour": hourly.last_valid_index().isoformat(),
+                            "granularity": "Odczyty nieregularne; licznik narastający → przyrosty godzinowe."})
+    rain = set_timezone(pd.read_parquet(weather))
+    rain["suma_opadu_mm"] = pd.to_numeric(rain["suma_opadu_mm"], errors="coerce")
+    hourly_rain = rain["suma_opadu_mm"].groupby(level=0).sum(min_count=1).resample("h").sum(min_count=1).rename("opad_mm")
+    last = min(s.dropna().index[-1] for s in series)
+    frame = pd.concat(series, axis=1).sort_index().asfreq("h").loc[:last]
+    frame = frame.join(hourly_rain)
+    return frame, {"files": source_info, "weatherFile": str(weather.relative_to(root)),
+                   "historyRule": "7/14/30 dni wstecz od ostatniej pełnej godziny wspólnego archiwum. Braki nie są interpolowane.",
+                   "excludedLastPartialHour": True}
+
+
+def weteranow_processed_paths(root):
+    """Wyłącznie zatwierdzone źródła Weteranów, bez ZMP i innych lokalizacji."""
+    data = Path(root) / "data" / "processed" / "Ruda Śląska"
+    return {"hourly": data / "godzinowe-weteranow.parquet",
+            "scada": data / "scada-weteranow.parquet",
+            "energy": data / "energia-weteranow.parquet"}
+
+
+def _local_time(value):
+    value = pd.Timestamp(value)
+    return value.tz_localize("Europe/Warsaw") if value.tzinfo is None else value.tz_convert("Europe/Warsaw")
+
+
+def load_processed_weteranow(root):
+    """Gotowe godzinowe m³/kWh/opady Weteranów i metadane źródła.
+
+    Plik godzinowy powstaje w business_analysis.py. Zawiera już przyrosty,
+    więc nie używamy diff() ponownie. load_scada_weterani interpoluje braki,
+    dlatego nie jest właściwym źródłem historii rzeczywistych pomiarów.
+    Ta funkcja nie wczytuje modeli ani nie uruchamia analizy biznesowej.
+    """
+    root = Path(root)
+    paths = weteranow_processed_paths(root)
+    missing = [str(p.relative_to(root)) for p in paths.values() if not p.is_file()]
+    if missing:
+        raise FileNotFoundError("Brak zatwierdzonych plików Weteranów: " + ", ".join(missing))
+    frame = pd.read_parquet(paths["hourly"], columns=["przepompowano_m3", "energia_kwh", "opad_mm"])
+    if not isinstance(frame.index, pd.DatetimeIndex) or frame.index.tz is None or frame.index.has_duplicates:
+        raise ValueError("Dane godzinowe Weteranów muszą mieć unikalny indeks czasu ze strefą.")
+    frame = frame.sort_index().asfreq("h")
+    frame = frame.apply(pd.to_numeric, errors="coerce")
+    if frame["opad_mm"].lt(0).any():
+        raise ValueError("Historyczne opady Weteranów zawierają ujemne wartości.")
+    for column in ("przepompowano_m3", "energia_kwh"):
+        frame[column] = frame[column].where(frame[column].ge(0))
+    scada_time = pd.read_parquet(paths["scada"], columns=["DataCzas"])["DataCzas"]
+    raw_end = _local_time(pd.to_datetime(scada_time).max())
+    frame = frame.loc[frame.index < raw_end.floor("h")]
+    if frame[["przepompowano_m3", "energia_kwh"]].dropna(how="all").empty:
+        raise ValueError("Brak pomiarów w zatwierdzonych danych Weteranów.")
+    raw_energy = pd.read_parquet(paths["energy"], columns=["Data_czas", "Wartosc_kWh"])
+    numeric_energy = pd.to_numeric(raw_energy["Wartosc_kWh"].astype(str).str.replace(",", ".", regex=False), errors="coerce")
+    if not numeric_energy.ge(0).any():
+        raise ValueError("Plik energii Weteranów nie zawiera poprawnych kWh.")
+    return frame, {
+        "files": [{"file": str(paths[key].relative_to(root)), "role": role} for key, role in
+                  (("hourly", "Godzinowe rzeczywiste m³, kWh i opady — źródło historii"),
+                   ("scada", "Kontrola końca pełnego przedziału pomiarów"),
+                   ("energy", "Źródłowe godzinowe kWh, bez ponownego różnicowania"))],
+        "rawScadaEnd": raw_end.isoformat(),
+        "rawEnergyEnd": _local_time(pd.to_datetime(raw_energy["Data_czas"]).max()).isoformat(),
+        "historyRule": "7/14/30 dni wstecz od ostatniej pełnej godziny archiwum Weteranów; braków nie interpolujemy.",
+    }
 
 if __name__ == "__main__":
     

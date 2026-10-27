@@ -1,0 +1,671 @@
+﻿
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#080e12">
+
+  <title>Smart Water · Analiza przepompowania</title>
+
+  <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+  <aside class="rail">
+    <a class="brand" href="#monitoring" aria-label="Smart Water">
+      <svg viewBox="0 0 32 32">
+        <path d="M16 3C11 11 6 16 6 22a10 10 0 0020 0c0-6-5-11-10-19Z"/>
+        <path d="M11 22a5 5 0 005 5"/>
+      </svg>
+    </a>
+
+    <span class="rail-line"></span>
+
+    <nav>
+      <a href="#monitoring" class="active" aria-label="Dane obiektu">▦</a>
+      <a href="#wykresy" aria-label="Wykresy">⌁</a>
+      <a href="#anomalie" aria-label="Anomalie">△</a>
+      <a href="#kalkulator" aria-label="Wycena nadwyżek">▤</a>
+    </nav>
+
+    <span class="rail-bottom">SW<br>2026</span>
+  </aside>
+
+  <div class="workspace">
+    <header class="topbar">
+      <div>
+        <strong>SMART WATER</strong>
+        <span class="slash">/</span>
+        <span>Analiza przepompowania</span>
+      </div>
+
+      <span class="demo-tag">WCZYTYWANIE DANYCH</span>
+    </header>
+
+    <main id="monitoring">
+      <div class="page-heading">
+        <div>
+          <div class="eyebrow">
+            PRZEPOMPOWANIE I BILANS ENERGII
+          </div>
+
+          <h1>
+            Monitoring przepompowni<span class="title-dot">.</span>
+          </h1>
+
+          <p>
+            Pomiary, odchylenia i wycena nadwyżek w okresach mokrych.
+          </p>
+        </div>
+
+        <a class="primary" href="#kalkulator">
+          Wyceń nadwyżki <span>↗</span>
+        </a>
+      </div>
+
+      <nav
+        class="location-tabs segmented"
+        aria-label="Zakładki lokalizacji"
+      >
+        <a
+          href="?station=chorzow"
+          data-station="chorzow"
+          class="selected"
+          aria-current="page"
+        >
+          Chorzów
+        </a>
+
+        <a
+          href="?station=ruda-weteranow"
+          data-station="ruda-weteranow"
+        >
+          Ruda Śląska · Weteranów
+        </a>
+      </nav>
+
+      <div class="toolbar">
+        <label class="station-picker">
+          <span class="label">PRZEPOMPOWNIA</span>
+
+          <select id="station" aria-label="Wybierz przepompownię">
+            <option value="chorzow">Chorzów</option>
+            <option value="ruda-weteranow">
+              Ruda Śląska · Weteranów
+            </option>
+          </select>
+        </label>
+
+        <div class="object-code" id="station-code">
+          CH-01
+        </div>
+
+        <div class="toolbar-end">
+          <span id="as-of">Wczytywanie danych…</span>
+
+          <button
+            id="refresh"
+            class="icon-button"
+            aria-label="Odśwież dane"
+          >
+            ↻
+          </button>
+        </div>
+      </div>
+
+      <p class="data-notice" id="data-notice">
+        Wczytywanie danych i wyników modeli.
+        Źródło i daty pomiarów pojawią się po zakończeniu obliczeń.
+      </p>
+
+      <div id="load-error" class="error" role="alert" hidden></div>
+
+      <div id="dashboard" aria-busy="true">
+        <section class="kpis" aria-label="Pomiary i predykcje">
+          <article class="kpi">
+            <div class="kpi-label" id="flow-label">
+              Przepompowano · ostatnia pełna godzina
+            </div>
+
+            <div class="kpi-number" id="flow">—</div>
+
+            <div class="kpi-foot" id="flow-foot">
+              Rzeczywiste pomiary archiwalne
+            </div>
+          </article>
+
+          <article class="kpi">
+            <div class="kpi-label" id="energy-label">
+              Energia · ostatnia pełna godzina
+            </div>
+
+            <div class="kpi-number" id="energy">—</div>
+
+            <div class="kpi-foot" id="energy-foot">
+              Rzeczywiste pomiary archiwalne
+            </div>
+          </article>
+
+          <article class="kpi accent">
+            <div class="kpi-label">
+              Pompowanie · prognoza 30 dni
+            </div>
+
+            <div class="kpi-number cyan" id="forecast-flow">—</div>
+
+            <div class="kpi-foot" id="forecast-flow-foot">
+              Predykcja CatBoost
+            </div>
+          </article>
+
+          <article class="kpi accent">
+            <div class="kpi-label">
+              Energia · prognoza 30 dni
+            </div>
+
+            <div class="kpi-number cyan" id="forecast-energy">—</div>
+
+            <div class="kpi-foot" id="forecast-energy-foot">
+              Predykcja LightGBM
+            </div>
+          </article>
+        </section>
+
+        <div class="section-heading" id="wykresy">
+          <h2>Przepompowanie i energia</h2>
+
+          <div
+            class="segmented"
+            id="range"
+            role="group"
+            aria-label="Zakres czasu"
+          >
+            <button data-range="7">
+              Historia 7 dni
+            </button>
+
+            <button data-range="14">
+              Historia 14 dni
+            </button>
+
+            <button data-range="30" class="selected">
+              Historia 30 dni
+            </button>
+
+            <button data-range="future">
+              Prognoza +30 dni
+            </button>
+          </div>
+        </div>
+
+        <section class="chart-grid">
+          <article class="card flow-card">
+            <div class="card-heading">
+              <div>
+                <h3>
+                  <span class="cyan">⌁</span>
+                  Przepompowanie ścieków
+                </h3>
+
+                <p id="flow-subtitle">
+                  Historia ostatnich 30 dni
+                </p>
+              </div>
+
+              <span class="badge" id="flow-model">
+                Porównanie · Q97
+              </span>
+            </div>
+
+            <div class="legend">
+              <span class="actual-legend">
+                <i class="line cyan-bg"></i>
+                Rzeczywiste
+              </span>
+
+              <span>
+                <i class="line amber-bg dashed"></i>
+                Predykcja bazowa
+              </span>
+
+              <span>
+                <i class="line muted-bg dashed"></i>
+                Q97 · górny kwantyl
+              </span>
+
+              <span class="anomaly-legend">
+                <i class="dot red-bg"></i>
+                Przekroczenie Q97
+              </span>
+            </div>
+
+            <div
+              id="flow-chart"
+              class="chart large"
+              tabindex="0"
+              aria-label="Wykres przepompowania; odczyt wartości strzałkami"
+            ></div>
+
+            <div class="chart-note">
+              <span id="forecast-note">
+                Prognoza +30 dni wymaga wyników modelu z podanego źródła.
+              </span>
+
+              <span id="quantile-note">
+                Q97 nie określa przyczyny odchylenia.
+              </span>
+            </div>
+          </article>
+
+          <article class="card energy-card">
+            <div class="card-heading">
+              <div>
+                <h3>
+                  <span class="cyan">ϟ</span>
+                  Zużycie energii
+                </h3>
+
+                <p id="energy-description">
+                  Wartości godzinowe · ta sama oś czasu co przepompowanie
+                </p>
+              </div>
+            </div>
+
+            <div class="legend">
+              <span class="actual-legend">
+                <i class="line cyan-bg"></i>
+                Rzeczywiste
+              </span>
+
+              <span>
+                <i class="line amber-bg dashed"></i>
+                Predykcja bazowa
+              </span>
+            </div>
+
+            <span class="legend" id="energy-q97-legend" hidden>
+              <i class="line muted-bg dashed"></i>
+              Q97 modelu energii
+            </span>
+
+            <div
+              id="energy-chart"
+              class="chart"
+              tabindex="0"
+              aria-label="Wykres energii"
+            ></div>
+          </article>
+        </section>
+
+        <section class="card business-section">
+          <div class="card-heading">
+            <div>
+              <h3>Bilans mokrych okresów</h3>
+
+              <p>
+                <code>src/business_metrics.py</code>
+                · historia wybranego zakresu, bez przyszłych pomiarów
+              </p>
+            </div>
+
+            <span class="badge" id="business-price">
+              Energia: 1,00 zł/kWh
+            </span>
+          </div>
+
+          <div class="business-stats" id="business-stats"></div>
+
+          <details>
+            <summary>
+              Epizody, bilans miesięczny i definicje metryk
+            </summary>
+
+            <p class="explanation">
+              Sucho: opad z 48 h &lt; 0,2 mm.
+              Mokro: opad z 24 h ≥ 1 mm, przy kompletnej historii 48 h.
+              Baseline: mediany suchych godzin, minimum 5 próbek;
+              kolejność grupowania jak w projekcie.
+              Nadwyżki godzinowe zachowują znak.
+              Koszt epizodu to dodatnia część jego nadwyżki netto × cena energii.
+              Niekompletny epizod nie otrzymuje wyceny.
+              Granice wybranego zakresu mogą ucinać epizody.
+            </p>
+
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Początek epizodu</th>
+                    <th>Godziny / wycenione</th>
+                    <th>nadwyzka_m3</th>
+                    <th>nadwyzka_kwh</th>
+                    <th>koszt_zl</th>
+                    <th>kompletny</th>
+                  </tr>
+                </thead>
+
+                <tbody id="episodes"></tbody>
+              </table>
+            </div>
+
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>miesiac</th>
+                    <th>godziny_mokre</th>
+                    <th>godziny_wycenione</th>
+                    <th>nadwyzka_m3</th>
+                    <th>nadwyzka_kwh</th>
+                    <th>pokrycie</th>
+                    <th>bilans_zl</th>
+                  </tr>
+                </thead>
+
+                <tbody id="monthly"></tbody>
+              </table>
+            </div>
+          </details>
+        </section>
+
+        <section id="anomalie">
+          <div class="section-heading">
+            <div>
+              <h2>
+                Przekroczenia Q97
+                <span class="count" id="anomaly-count">0</span>
+              </h2>
+
+              <p>
+                Ostatnie 30 dni · odchylenia pompowania,
+                bez przypisanej przyczyny i kosztów napraw.
+              </p>
+            </div>
+          </div>
+
+          <div class="card table-scroll">
+            <table class="anomaly-table">
+              <thead>
+                <tr>
+                  <th>Zdarzenie / czas wykrycia</th>
+                  <th>Odchylenie od przewidywanej wartości</th>
+                  <th>ponad_q97 · suma m³</th>
+                </tr>
+              </thead>
+
+              <tbody id="anomalies"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="kalkulator">
+          <div class="section-heading">
+            <div>
+              <div class="eyebrow">
+                WYCENA WEDŁUG BUSINESS_METRICS.PY
+              </div>
+
+              <h2>Kalkulator cen energii</h2>
+
+              <p>
+                Wycena pomiarów historycznych lub predykcji na przyszłe dni
+                — źródła pozostają rozdzielone.
+              </p>
+            </div>
+
+            <button id="reset" class="secondary">
+              Przywróć cenę ze źródła
+            </button>
+          </div>
+
+          <div class="calculator-grid">
+            <form
+              class="card calculator-form"
+              id="calculator-form"
+              novalidate
+            >
+              <div class="card-heading">
+                <div>
+                  <h3>Zakres cen energii</h3>
+
+                  <p id="calc-source">
+                    Ostatnie 30 dni danych · te same nadwyżki w każdym wariancie
+                  </p>
+                </div>
+              </div>
+
+              <p class="explanation">
+                Wpisz ceny kWh, które chcesz porównać.
+                Początkowo wszystkie warianty korzystają z ceny źródłowej;
+                panel nie zakłada nieznanego zakresu.
+              </p>
+
+              <div class="field-grid calculator-options">
+                <label>
+                  Okres wyceny
+
+                  <select id="calc-period">
+                    <option value="view">
+                      Jak na wykresie
+                    </option>
+
+                    <option value="history7">
+                      Historia 7 dni
+                    </option>
+
+                    <option value="history14">
+                      Historia 14 dni
+                    </option>
+
+                    <option value="history30">
+                      Historia 30 dni
+                    </option>
+
+                    <option value="forecast30">
+                      Prognoza kolejnych 30 dni
+                    </option>
+                  </select>
+                </label>
+
+                <label>
+                  Podstawa wyceny
+
+                  <select id="calc-metric">
+                    <option value="energy">
+                      Całe zużycie energii
+                    </option>
+
+                    <option value="wet_excess">
+                      Nadwyżki w mokrych epizodach
+                    </option>
+                  </select>
+                </label>
+              </div>
+
+              <div
+                class="field-grid calculator-options"
+                id="calc-custom-dates"
+                hidden
+              >
+                <label>
+                  Data od
+
+                  <input
+                    class="date-input"
+                    id="calc-start"
+                    type="date"
+                  >
+                </label>
+
+                <label>
+                  Data do
+
+                  <input
+                    class="date-input"
+                    id="calc-end"
+                    type="date"
+                  >
+                </label>
+
+                <label>
+                  Energia w okresie historycznym
+
+                  <select id="calc-basis">
+                    <option value="measured">
+                      Rzeczywiste pomiary energii
+                    </option>
+
+                    <option value="predicted">
+                      Predykcja modelu energii dla dat historycznych
+                    </option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="field-grid">
+                <label>
+                  Cena dolna
+
+                  <span class="input-wrap">
+                    <input
+                      name="lowPrice"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required
+                      value="1"
+                    >
+
+                    <span>zł/kWh</span>
+                  </span>
+                </label>
+
+                <label>
+                  Cena bazowa
+
+                  <span class="input-wrap">
+                    <input
+                      name="basePrice"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required
+                      value="1"
+                    >
+
+                    <span>zł/kWh</span>
+                  </span>
+                </label>
+
+                <label>
+                  Cena górna
+
+                  <span class="input-wrap">
+                    <input
+                      name="highPrice"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required
+                      value="1"
+                    >
+
+                    <span>zł/kWh</span>
+                  </span>
+                </label>
+              </div>
+
+              <p class="microcopy">
+                Zmiana ceny wpływa na wycenę, nie na objętość,
+                energię ani kompletność pomiarów.
+                Zakres to analiza wrażliwości na cenę,
+                a nie niepewność modelu.
+              </p>
+            </form>
+
+            <div class="results">
+              <div
+                id="calc-error"
+                class="error"
+                role="alert"
+                hidden
+              ></div>
+
+              <div
+                id="calc-results"
+                aria-live="polite"
+              ></div>
+            </div>
+          </div>
+
+          <details class="card methodology">
+            <summary>Jak liczymy koszt?</summary>
+
+            <p>
+              Całe zużycie: pomiar lub predykcja kWh × wybrana cena.
+              Prognoza nigdy nie używa rzeczywistych przyszłych pomiarów.
+              Dla dni przyszłych mokre nadwyżki są wyłącznie szacunkiem
+              względem profilu suchej pogody wyznaczonego z historii.
+              Historyczny bilans poniżej wykresów pozostaje oparty
+              na pomiarach.
+            </p>
+
+            <p>
+              Stosujemy funkcje calculate_excess i summarize_rain_events
+              z business_metrics.py:
+              nadwyzka_kwh = energia_kwh − bazowe_kwh
+              dla kompletnych mokrych godzin.
+              koszt_nadwyzki_zl = nadwyzka_kwh × cena.
+              Dla kompletnego epizodu koszt_zl =
+              max(0, suma nadwyzka_kwh) × cena;
+              nie obcinamy ujemnych różnic przed sumowaniem.
+              Niekompletne epizody nie mają wyceny.
+            </p>
+
+            <p>
+              Bilans miesięczny zachowuje znak i pokazuje pokrycie pomiarów.
+              Moduł nie wyznacza kosztów diagnostyki, napraw,
+              zwrotu inwestycji ani oszczędności po interwencji.
+              Koszt historycznej nadwyżki nie jest kwotą,
+              którą na pewno można zaoszczędzić.
+            </p>
+          </details>
+        </section>
+      </div>
+
+      <footer>
+        <span class="footer-brand">
+          ◈ SMART WATER
+          <span>CHALLENGE 2026</span>
+        </span>
+
+        <span>
+          <span id="footer-location">Chorzów</span>
+          · Europe/Warsaw · Pogoda:
+          <a
+            href="https://open-meteo.com/"
+            target="_blank"
+            rel="noopener"
+          >
+            Open-Meteo / ECMWF
+          </a>
+        </span>
+
+        <a href="/api/dashboard" id="download-data">
+          Eksport danych JSON ↓
+        </a>
+      </footer>
+    </main>
+  </div>
+
+  <div
+    id="tooltip"
+    class="tooltip"
+    role="status"
+    hidden
+  ></div>
+
+  <script type="module" src="/app.mjs"></script>
+</body>
+</html>
