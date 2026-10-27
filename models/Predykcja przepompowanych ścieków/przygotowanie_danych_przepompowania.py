@@ -59,12 +59,6 @@ def przygotuj_dane_przepompowania_z_opadami():
     df_1h.loc[df_1h["przepompowano"] < 0, "przepompowano"] = np.nan
 
     df_lgbm = df_1h.join(df_ch_opady[["suma_opadu_mm"]], how="left")
-    df_lgbm["suma_opadu_mm"] = df_lgbm["suma_opadu_mm"].fillna(0)
-
-
-    #print(df_lgbm.head(10))
-
-
 
 
     # Dajemy modelowi kontekst kalendarzowy, ponieważ może zależeć od pory dnia i dnia tygodnia
@@ -77,9 +71,16 @@ def przygotuj_dane_przepompowania_z_opadami():
     df_lgbm["hour_sin"] = np.sin(2 * np.pi * df_lgbm.index.hour / 24)
     df_lgbm["hour_cos"] = np.cos(2 * np.pi * df_lgbm.index.hour / 24)
 
-    #print(df_lgbm.head(10))
+    # Cykliczność roku
+    df_lgbm["month_sin"] = np.sin(2 * np.pi * (df_lgbm.index.month - 1) / 12)
+    df_lgbm["month_cos"] = np.cos(2 * np.pi * (df_lgbm.index.month - 1) / 12)
+
 
     r = df_lgbm["suma_opadu_mm"]
+
+    df_lgbm["opad_lag_1h"] = r.shift(1)
+    df_lgbm["opad_max6h"] = r.rolling(6).max()
+
 
     df_lgbm["opad_0h"] = r  # bieżąca godzina
 
@@ -97,58 +98,33 @@ def przygotuj_dane_przepompowania_z_opadami():
     for k in [2, 3, 6, 12, 24, 48]:                                            
         df_lgbm[f"opad_lag_{k}h"] = r.shift(k)
 
-    #historia przepompowań
-    for k in [1, 3, 6, 24]:                                            
-        df_lgbm[f"przepompowano_lag_{k}h"] = df_lgbm[f"przepompowano"].shift(k)
-
-    df_lgbm[f"przepompowano_mean_6h"] = df_lgbm["przepompowano"].shift(1).rolling(6, min_periods=6).mean()
 
     features = [
         # Kalendarzowe
         "hour", "dayofweek", "month", "weekend",
-        "hour_sin", "hour_cos",
+        "month_sin", "month_cos",
 
         # Opady
         "opad_0h", "opad_2h", "opad_3h", "opad_6h",
         "opad_12h", "opad_24h", "opad_48h",
-        "opad_max3h", "h_od_deszczu",
+        "opad_max6h",
 
         # Opóźnienia opadów
-        "opad_lag_2h",
+        "opad_lag_1h", "opad_lag_2h",
         "opad_lag_3h", "opad_lag_6h",
-        "opad_lag_12h", "opad_lag_24h",
-        "opad_lag_48h",
-
-        # Historia przepompowań
-        #"przepompowano_lag_1h",
-        #"przepompowano_lag_3h",
-        #"przepompowano_lag_6h",
-        #"przepompowano_lag_24h",
-        #"przepompowano_mean_6h"
+        "opad_lag_12h", "opad_lag_24h"
     ]
+
 
     X = df_lgbm[features].copy()
     y = df_lgbm["przepompowano"].copy()
 
-    #print("Liczba cech:", X.shape[1])
-    #print("Liczba obserwacji:", len(X))
-
-    #print("\nBraki w cechach:", X.isna().sum())
-    #print("\nBraki w y:", y.isna().sum())
-
     # Usuwamy tylko wiersze z brakującą wartością docelową
-    first_valid = y.first_valid_index()
-    X = X.loc[first_valid:].copy()
-    y = y.loc[first_valid:].copy()
+    mask = y.notna()
 
-    # Jeśli w środku były luki, wypełnij je interpolacją:
-    if y.isna().any():
-        y = y.interpolate(method="time")
+    X = X.loc[mask].copy()
+    y = y.loc[mask].copy()
 
-    # Wymuszenie metadanej częstotliwości w indeksie
-    y.index.freq = pd.infer_freq(y.index) or "1h"
-    X.index.freq = y.index.freq
-
-    return X,y
+    return X, y
 
 
