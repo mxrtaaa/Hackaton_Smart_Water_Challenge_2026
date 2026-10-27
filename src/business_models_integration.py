@@ -1,352 +1,113 @@
+"""Zestawienie alarmów modeli z kosztami epizodów opadowych."""
 
+import numpy as np
 import pandas as pd
+
 from sciezka_projektu import get_project_root
 
 
 ROOT = get_project_root()
-
-BUSINESS = ROOT / "reports" / "chorzow"
 MODELS = ROOT / "reports" / "models"
 
-# Wyniki analizy biznesowej Chorzowa
-biznes = pd.read_parquet(BUSINESS / "godziny.parquet")
-epizody = pd.read_csv(
-    BUSINESS / "epizody.csv",
-    index_col="epizod_id"
-)
-
-# Przypisanie identyfikatora epizodu do mokrych godzin
-mokry = biznes["okres"].eq("mokry")
-poczatki = mokry & ~mokry.shift(fill_value=False)
-
-biznes["epizod_id"] = (
-    poczatki.cumsum().where(mokry).astype("Int64")
-)
-
-
-# Porównujemy oba modele osobno
-modele = {
-    "CatBoost - przepływ": "chorzow_przeplyw.parquet",
-    "LightGBM - energia": "chorzow_energia.parquet",
+# Obiekt: (katalog raportu biznesowego, modele)
+OBIEKTY = {
+    "CHORZÓW": (
+        "chorzow",
+        [
+            ("CatBoost - przepływ", "chorzow_przeplyw.parquet", "przepompowano_m3", "catboost_przeplyw"),
+            ("LightGBM - energia", "chorzow_energia.parquet", "energia_kwh", "lightgbm_energia"),
+        ],
+    ),
+    "RUDA - WETERANÓW": (
+        "ruda-weteranow",
+        [
+            ("CatBoost - przepływ", "ruda_przeplyw.parquet", "przepompowano_m3", "catboost_przeplyw"),
+            ("LightGBM - energia", "ruda_energia.parquet", "energia_kwh", "lightgbm_energia"),
+        ],
+    ),
 }
 
-for nazwa, plik in modele.items():
+for obiekt, (katalog, modele) in OBIEKTY.items():
+    business_path = ROOT / "reports" / katalog
+    biznes = pd.read_parquet(business_path / "godziny.parquet").sort_index()
+    epizody = pd.read_csv(business_path / "epizody.csv", index_col="epizod_id")
 
-    print(f"\n========== {nazwa} ==========")
+    if not isinstance(biznes.index, pd.DatetimeIndex) or biznes.index.tz is None:
+        raise ValueError(f"{obiekt}: niepoprawny indeks czasowy danych biznesowych")
+    if biznes.index.has_duplicates:
+        raise ValueError(f"{obiekt}: zduplikowane godziny w danych biznesowych")
 
-    wyniki = pd.read_parquet(MODELS / plik)
+    # Numeracja epizodów jest taka sama jak w business_metrics.summarize_rain_events.
+    mokry = biznes["okres"].eq("mokry")
+    poczatki = mokry & ~mokry.shift(fill_value=False)
+    biznes["epizod_id"] = poczatki.cumsum().where(mokry).astype("Int64")
 
-    # Ujednolicamy strefę czasową
-    if wyniki.index.tz is None:
-        raise ValueError(
-            f"{nazwa}: indeks wyników nie ma strefy czasowej"
-        )
+    for nazwa, plik, pomiar, etykieta in modele:
+        print(f"\n========== {obiekt}: {nazwa} ==========")
 
-    wyniki.index = wyniki.index.tz_convert(biznes.index.tz)
+        wyniki = pd.read_parquet(MODELS / plik).sort_index(kind="stable")
+        if not isinstance(wyniki.index, pd.DatetimeIndex) or wyniki.index.tz is None:
+            raise ValueError(f"{nazwa}: wyniki modelu nie mają indeksu ze strefą czasową")
 
-    if wyniki.index.has_duplicates:
-        raise ValueError(
-            f"{nazwa}: powtarzające się godziny w wynikach"
-        )
+        wyniki.index = wyniki.index.tz_convert(biznes.index.tz)
+        duplikaty = int(wyniki.index.duplicated().sum())
+        if duplikaty:
+            print(f"Pomijam {duplikaty} powtórzonych godzin (zostawiam ostatni odczyt)")
+            wyniki = wyniki.loc[~wyniki.index.duplicated(keep="last")].copy()
 
-    # Zachowujemy godziny z poprawną predykcją
-    wyniki = wyniki.dropna(
-        subset=["rzeczywiste", "q97"]
-    ).copy()
+        wyniki = wyniki.dropna(subset=["rzeczywiste", "q97"]).copy()
+        wyniki["alarm"] = wyniki["rzeczywiste"] > wyniki["q97"]
 
-    # Alarm: rzeczywista wartość przekracza Q97
-    wyniki["alarm"] = (
-        wyniki["rzeczywiste"] > wyniki["q97"]
-    )
-
-    # Połączenie godzin modeli i analizy biznesowej
-    razem = biznes.join(
-        wyniki[["rzeczywiste", "q97", "alarm"]],
-        how="inner"
-    )
-
-    # Ile alarmów przypadło na każdy mokry epizod?
-    ocena = (
-        razem.loc[razem["epizod_id"].notna()]
-        .groupby("epizod_id")
-        .agg(
-            godziny_ocenione=("alarm", "size"),
-            godziny_alarmowe=("alarm", "sum"),
-            wykryty=("alarm", "any")
-        )
-    )
-
-    porownanie = epizody.join(ocena)
-
-    # Liczymy tylko epizody kompletne:
-    # pełne pomiary biznesowe i pełne pokrycie modelem
-    pelne = porownanie.loc[
-        porownanie["kompletny"].eq(True)
-        & porownanie["godziny_ocenione"].eq(
-            porownanie["godziny"]
-        )
-    ].copy()
-
-    wykryte = pelne.loc[pelne["wykryty"].eq(True)]
-
-    print("Godziny ocenione przez model:", len(razem))
-    print("Godziny alarmowe:", int(razem["alarm"].sum()))
-
-    print("Pełne epizody ocenione:", len(pelne))
-    print("Epizody z przynajmniej jednym alarmem:", len(wykryte))
-
-    if len(pelne) > 0:
-        print(
-            "Odsetek wykrytych epizodów:",
-            round(100 * len(wykryte) / len(pelne), 1),
-            "%"
-        )
-
-    print(
-        "Koszt wszystkich ocenionych epizodów:",
-        round(pelne["koszt_zl"].sum(), 2),
-        "zł"
-    )
-
-    print(
-        "Koszt epizodów z alarmem:",
-        round(wykryte["koszt_zl"].sum(), 2),
-        "zł"
-    )
-
-    print("\nNajdroższe epizody z alarmem:")
-    print(
-        wykryte.sort_values("koszt_zl", ascending=False)[
-            ["poczatek", "koniec", "godziny_alarmowe", "koszt_zl"]
-        ].head(10)
-    )
-
-    # Zapisujemy również porównanie do dalszej analizy
-    nazwa_pliku = (
-        "catboost_przeplyw" if "CatBoost" in nazwa
-        else "lightgbm_energia"
-    )
-
-    pelne.to_csv(
-        BUSINESS / f"porownanie_{nazwa_pliku}.csv"
-    )
-
-
-#################
-# RUDA ŚLĄSKA
-
-
-import pandas as pd
-import numpy as np
-
-from sciezka_projektu import get_project_root
-
-
-ROOT = get_project_root()
-MODELS = ROOT / "reports" / "models"
-
-# Obsługujemy obie lokalizacje raportów biznesowych
-BUSINESS = ROOT / "reports" / "ruda-weteranow"
-
-if not (BUSINESS / "godziny.parquet").exists():
-    BUSINESS = ROOT / "reports" / "business" / "ruda-weteranow"
-
-
-# DANE BIZNESOWE WETERANÓW
-
-biznes = pd.read_parquet(
-    BUSINESS / "godziny.parquet"
-).sort_index()
-
-epizody = pd.read_csv(
-    BUSINESS / "epizody.csv",
-    index_col="epizod_id"
-)
-
-# Przypisujemy każdej mokrej godzinie numer epizodu
-mokry = biznes["okres"].eq("mokry")
-poczatki = mokry & ~mokry.shift(fill_value=False)
-
-biznes["epizod_id"] = (
-    poczatki.cumsum()
-    .where(mokry)
-    .astype("Int64")
-)
-
-
-# MODELE RUDY ŚLĄSKIEJ — WETERANÓW
-
-modele = [
-    (
-        "CatBoost - przepływ",
-        "ruda_przeplyw.parquet",
-        "przepompowano_m3",
-        "catboost_przeplyw"
-    ),
-    (
-        "LightGBM - energia",
-        "ruda_energia.parquet",
-        "energia_kwh",
-        "lightgbm_energia"
-    )
-]
-
-
-for nazwa, plik, pomiar, nazwa_pliku in modele:
-
-    print(f"\n========== RUDA: {nazwa} ==========")
-
-    wyniki = pd.read_parquet(MODELS / plik).sort_index(kind="stable")
-
-    # Ujednolicamy strefę czasową
-    if not isinstance(wyniki.index, pd.DatetimeIndex):
-        raise ValueError(f"{nazwa}: brak indeksu czasowego")
-
-    if wyniki.index.tz is None:
-        raise ValueError(f"{nazwa}: indeks nie ma strefy czasowej")
-
-    wyniki.index = wyniki.index.tz_convert(
-        biznes.index.tz
-    )
-
-    if wyniki.index.has_duplicates:
-        print(
-            f"{nazwa}: usuwam "
-            f"{wyniki.index.duplicated().sum()} zduplikowanych godzin"
-        )
-
-        wyniki = wyniki.loc[
-            ~wyniki.index.duplicated(keep="last")
-        ].copy()
-
-    # Tylko godziny z rzeczywistym pomiarem i Q97
-    wyniki = wyniki.dropna(
-        subset=["rzeczywiste", "q97"]
-    ).copy()
-
-    wyniki["alarm"] = (
-        wyniki["rzeczywiste"] > wyniki["q97"]
-    )
-
-    # KONTROLA ZGODNOŚCI DANYCH
-    # Sprawdzamy, czy model i analiza biznesowa
-    # korzystają z tych samych pomiarów.
-
-    kontrola = wyniki[["rzeczywiste"]].join(
-        biznes[[pomiar]],
-        how="inner"
-    ).dropna()
-
-    if len(kontrola) > 0:
+        # Sprawdzamy zgodność na wspólnych godzinach z dwoma poprawnymi pomiarami.
+        kontrola = wyniki[["rzeczywiste"]].join(biznes[[pomiar]], how="inner").dropna()
+        if kontrola.empty:
+            raise ValueError(f"{obiekt}, {nazwa}: brak wspólnych poprawnych pomiarów")
         zgodne = np.isclose(
-            kontrola["rzeczywiste"].to_numpy(),
-            kontrola[pomiar].to_numpy(),
-            rtol=0.001,
-            atol=0.01
+            kontrola["rzeczywiste"], kontrola[pomiar], rtol=0.001, atol=0.01
         )
+        print(f"Zgodność pomiarów: {100 * zgodne.mean():.1f}% "
+              f"({int(zgodne.sum())}/{len(kontrola)} wspólnych poprawnych godzin)")
+        if zgodne.mean() < 0.95:
+            raise ValueError(f"{obiekt}, {nazwa}: niezgodne pomiary modelu i analizy biznesowej")
 
-        zgodnosc = 100 * zgodne.mean()
+        razem = biznes.join(wyniki[["alarm"]], how="inner")
+        if razem.empty:
+            raise ValueError(f"{obiekt}, {nazwa}: brak wspólnych godzin")
 
-        print(
-            "Zgodność pomiarów modelu z analizą biznesową:",
-            round(zgodnosc, 1),
-            "%"
-        )
-
-        if zgodnosc < 95:
-            print(
-                "UWAGA: model i analiza biznesowa korzystają "
-                "z różnie przygotowanych pomiarów."
+        ocena = (
+            razem.loc[razem["epizod_id"].notna()]
+            .groupby("epizod_id")
+            .agg(
+                godziny_ocenione=("alarm", "size"),
+                godziny_alarmowe=("alarm", "sum"),
+                wykryty=("alarm", "any"),
             )
-
-    # ŁĄCZENIE ALARMÓW Z ANALIZĄ BIZNESOWĄ
-
-    razem = biznes.join(
-        wyniki[["alarm"]],
-        how="inner"
-    )
-
-    if razem.empty:
-        print("Brak wspólnych godzin.")
-        continue
-
-    # Czy podczas epizodu wystąpił przynajmniej jeden alarm?
-    ocena = (
-        razem.loc[razem["epizod_id"].notna()]
-        .groupby("epizod_id")
-        .agg(
-            godziny_ocenione=("alarm", "size"),
-            godziny_alarmowe=("alarm", "sum"),
-            wykryty=("alarm", "any")
         )
-    )
+        porownanie = epizody.join(ocena)
+        pelne = porownanie.loc[
+            porownanie["kompletny"].eq(True)
+            & porownanie["godziny_ocenione"].eq(porownanie["godziny"])
+        ].copy()
+        wykryte = pelne.loc[pelne["wykryty"].eq(True)]
 
-    porownanie = epizody.join(ocena)
+        koszt = pelne["koszt_zl"].sum()
+        koszt_z_alarmem = wykryte["koszt_zl"].sum()
 
-    # Uwzględniamy tylko kompletne epizody,
-    # ocenione przez model w każdej godzinie.
-    pelne = porownanie.loc[
-        porownanie["kompletny"].eq(True)
-        & porownanie["godziny_ocenione"].eq(
-            porownanie["godziny"]
-        )
-    ].copy()
+        print(f"Godziny ocenione: {len(razem)}, alarmowe: {int(razem['alarm'].sum())}")
+        print(f"Pełne epizody: {len(pelne)}, z alarmem: {len(wykryte)}")
+        if len(pelne):
+            print(f"Odsetek epizodów z alarmem: {100 * len(wykryte) / len(pelne):.1f}%")
+        print(f"Koszt wszystkich epizodów: {koszt:.2f} zł")
+        print(f"Koszt epizodów z alarmem: {koszt_z_alarmem:.2f} zł")
+        if koszt > 0:
+            print(f"Udział kosztów epizodów z alarmem: {100 * koszt_z_alarmem / koszt:.1f}%")
 
-    wykryte = pelne.loc[
-        pelne["wykryty"].eq(True)
-    ]
-
-    koszt_wszystkich = pelne["koszt_zl"].sum()
-    koszt_z_alarmem = wykryte["koszt_zl"].sum()
-
-    # PODSUMOWANIE
-
-    print("Godziny ocenione przez model:", len(razem))
-    print("Godziny alarmowe:", int(razem["alarm"].sum()))
-
-    print("Pełne epizody ocenione:", len(pelne))
-    print("Epizody z przynajmniej jednym alarmem:", len(wykryte))
-
-    if len(pelne) > 0:
+        print("\nNajdroższe epizody z alarmem:")
         print(
-            "Odsetek epizodów z alarmem:",
-            round(100 * len(wykryte) / len(pelne), 1),
-            "%"
+            wykryte.sort_values("koszt_zl", ascending=False)[
+                ["poczatek", "koniec", "godziny_alarmowe", "koszt_zl"]
+            ].head(10)
         )
-
-    print(
-        "Koszt wszystkich ocenionych epizodów:",
-        round(koszt_wszystkich, 2),
-        "zł"
-    )
-
-    print(
-        "Koszt epizodów z alarmem:",
-        round(koszt_z_alarmem, 2),
-        "zł"
-    )
-
-    if koszt_wszystkich > 0:
-        print(
-            "Udział kosztów epizodów z alarmem:",
-            round(100 * koszt_z_alarmem / koszt_wszystkich, 1),
-            "%"
-        )
-
-    print("\nNajdroższe epizody z alarmem:")
-
-    print(
-        wykryte.sort_values(
-            "koszt_zl", ascending=False
-        )[
-            ["poczatek", "koniec", "godziny_alarmowe", "koszt_zl"]
-        ].head(10)
-    )
-
-    # ZAPIS WYNIKÓW
-
-    output = BUSINESS / f"porownanie_{nazwa_pliku}.csv"
-
-    pelne.to_csv(output)
-
-    print("\nZapisano:", output)
+        output = business_path / f"porownanie_{etykieta}.csv"
+        pelne.to_csv(output)
+        print("Zapisano:", output)
