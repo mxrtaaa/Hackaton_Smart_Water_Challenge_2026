@@ -1,124 +1,119 @@
+"""Analiza biznesowa Chorzowa i Rudy Śląskiej.
+
+Uruchom bez argumentów w VS Code (Run Python File).
+Dane wynikowe Rudy są też zapisywane godzinowo do użycia przez modele.
+Nie zmienia współdzielonych funkcji z data_preparation.py.
+"""
+
+from datetime import timedelta, timezone
+
 import pandas as pd
-from pathlib import Path
 
+from business_metrics import (
+    classify_weather_periods,
+    run_business_analysis,
+)
 from data_preparation import convert_meter_data, set_timezone
-from business_metrics import run_business_analysis
+from sciezka_projektu import get_project_root
 
-DATA_PATH = Path("./data/processed/Chorzów")
 
-df_ch_opady = pd.read_parquet(DATA_PATH / "suma_opadow.parquet")
-df_ch_przeplyw = pd.read_parquet(DATA_PATH / "przeplyw.parquet")
-df_ch_energia = pd.read_parquet(DATA_PATH / "energia.parquet")
-df_ch_scieki = pd.read_parquet(DATA_PATH / "scieki.parquet")
+ROOT = get_project_root()
+DATA = ROOT / "data" / "processed"
+REPORTS = ROOT / "reports"
+CENA_KWH = 1.0
 
-# CHORZÓW
+# Ustalony roboczo przez zespół próg dla Weteranów.
+# Nie jest potwierdzoną maksymalną wydajnością przepompowni.
+MAX_M3_H_WETERANOW = 100.0
+STALA_STREFA = timezone(timedelta(hours=1))
 
-df_ch_scieki_h = convert_meter_data(
-    df_ch_scieki,
-    "Ilosc_przepompowanych_sciekow",
-    "przepompowano_m3"
+
+# ============================================================================
+# CHORZÓW — pozostawiamy sprawdzone przetwarzanie
+# ============================================================================
+print("\n========== CHORZÓW ==========")
+
+scieki = pd.read_parquet(DATA / "Chorzów" / "scieki.parquet")
+energia = pd.read_parquet(DATA / "Chorzów" / "energia.parquet")
+opady = pd.read_parquet(DATA / "Chorzów" / "suma_opadow.parquet")
+
+scieki_h = convert_meter_data(
+    scieki, "Ilosc_przepompowanych_sciekow", "przepompowano_m3"
+)
+energia_h = convert_meter_data(
+    energia, "Zuzycie_energii_elektrycznej", "energia_kwh"
 )
 
-df_ch_energia_h = convert_meter_data(
-    df_ch_energia,
-    "Zuzycie_energii_elektrycznej",
-    "energia_kwh"
-)
-
-df_ch_opady = set_timezone(df_ch_opady)
-
-df_ch_opady["suma_opadu_mm"] = pd.to_numeric(
-    df_ch_opady["suma_opadu_mm"],
-    errors="coerce"
-)
-
-df_ch_opady_h = (
-    df_ch_opady["suma_opadu_mm"]
-    .groupby(level=0).sum(min_count=1)
-    .resample("1h").sum(min_count=1)
-)
-
-df_ch_opady_h.name = "opad_mm"
-
-df_chorzow = pd.concat(
-    [df_ch_scieki_h, df_ch_energia_h],
-    axis=1
-).sort_index()
-
-df_chorzow = df_chorzow.join(
-    df_ch_opady_h,
-    how="left"
-)
-
-wynik_chorzow = run_business_analysis(df_chorzow)
-print(f"\n========== CHORZÓW ==========")
-print(wynik_chorzow["summary"])
-print(wynik_chorzow["episodes"].head(10))
-print(wynik_chorzow["monthly"])
-
-# eksport do plików
-
-# Path("reports/business/chorzow").mkdir(parents=True, exist_ok=True)
-
-# wynik["episodes"].to_csv("reports/business/chorzow/epizody.csv")
-# wynik["monthly"].to_csv("reports/business/chorzow/miesiace.csv")
-
-# RUDA ŚLĄSKA
-
-
-# RUDA ŚLĄSKA
-
-from business_metrics import classify_weather_periods
-
-RUDA_PATH = Path("./data/processed/Ruda Śląska")
-
-# Opady godzinowe Open-Meteo
-df_rs_opady = pd.read_parquet(
-    RUDA_PATH / "suma_opadow.parquet"
-)
-
-df_rs_opady = set_timezone(df_rs_opady)
-
-df_rs_opady["suma_opadu_mm"] = pd.to_numeric(
-    df_rs_opady["suma_opadu_mm"], errors="coerce"
-)
-
-df_rs_opady_h = (
-    df_rs_opady["suma_opadu_mm"]
+opady = set_timezone(opady)
+opady["suma_opadu_mm"] = pd.to_numeric(opady["suma_opadu_mm"], errors="coerce")
+opady_h = (
+    opady["suma_opadu_mm"]
     .groupby(level=0).sum(min_count=1)
     .resample("h").sum(min_count=1)
     .rename("opad_mm")
 )
 
+df_chorzow = pd.concat([scieki_h, energia_h], axis=1).sort_index()
+df_chorzow = df_chorzow.join(opady_h, how="left")
+wynik_chorzow = run_business_analysis(df_chorzow, price=CENA_KWH)
 
-for stacja in ["weteranow", "zmp"]:
+print(wynik_chorzow["summary"])
+print("\nNajdroższe epizody:")
+print(wynik_chorzow["episodes"].head(5))
 
-    print(f"\n========== {stacja.upper()} ==========")
+folder = REPORTS / "chorzow"
+folder.mkdir(parents=True, exist_ok=True)
+wynik_chorzow["detail"].to_parquet(folder / "godziny.parquet")
+wynik_chorzow["episodes"].to_csv(folder / "epizody.csv")
+wynik_chorzow["monthly"].to_csv(folder / "miesiace.csv")
 
+
+# ============================================================================
+# RUDA ŚLĄSKA — wspólne opady, potem każda przepompownia osobno
+# ============================================================================
+RUDA = DATA / "Ruda Śląska"
+
+opady = pd.read_parquet(RUDA / "suma_opadow.parquet")
+opady = set_timezone(opady)
+opady["suma_opadu_mm"] = pd.to_numeric(opady["suma_opadu_mm"], errors="coerce")
+opady_h = (
+    opady["suma_opadu_mm"]
+    .groupby(level=0).sum(min_count=1)
+    .resample("h").sum(min_count=1)
+    .rename("opad_mm")
+)
+
+for stacja in ("weteranow", "zmp"):
+    print(f"\n========== RUDA: {stacja.upper()} ==========")
+
+    # SCADA: surowy, narastający licznik m³. Nie wywołujemy
+    # load_scada_weterani(), bo ta funkcja już oblicza przyrosty.
     scada = pd.read_parquet(
-        RUDA_PATH / f"scada-{stacja}.parquet",
-        columns=["DataCzas", "LicznikSciekow"]
+        RUDA / f"scada-{stacja}.parquet",
+        columns=["DataCzas", "LicznikSciekow"],
     )
 
-    # Czas normalizujemy PRZED sortowaniem.
-    scada = set_timezone(scada, time_col="DataCzas")
+    # Daty ze SCADA są polskim czasem lokalnym bez strefy.
+    # Podczas zmian czasu nie próbujemy zgadywać godzin 02:00.
+    czas = pd.DatetimeIndex(pd.to_datetime(scada["DataCzas"], errors="coerce"))
+    if czas.tz is None:
+        czas = czas.tz_localize(
+            "Europe/Warsaw", ambiguous="NaT", nonexistent="NaT"
+        )
+    czas = czas.tz_convert(STALA_STREFA)
+
+    print("Odrzucone niejednoznaczne/nieistniejące daty SCADA:", int(czas.isna().sum()))
+    scada.index = czas
+    scada = scada.loc[scada.index.notna()].copy()
+    scada.index.name = "Data_czas"
 
     scada["LicznikSciekow"] = pd.to_numeric(
-        scada["LicznikSciekow"].astype(str)
-        .str.replace(",", ".", regex=False),
-        errors="coerce"
+        scada["LicznikSciekow"].astype(str).str.replace(",", ".", regex=False),
+        errors="coerce",
     )
 
-    print(
-        "Poprawne odczyty licznika:",
-        scada["LicznikSciekow"].notna().sum()
-    )
-    print(
-        "Różne wartości licznika:",
-        scada["LicznikSciekow"].nunique()
-    )
-
-    # Narastający licznik w m3
+    # Najpierw godziny, dopiero później różnica licznika.
+    # Brak pomiaru w godzinie pozostaje NaN (bez ffill/interpolacji).
     licznik_h = (
         scada["LicznikSciekow"]
         .dropna()
@@ -126,164 +121,99 @@ for stacja in ["weteranow", "zmp"]:
         .sort_index()
         .resample("h").last()
     )
+    przyrost = licznik_h.diff()
+    bledne = przyrost < 0
+    if stacja == "weteranow":
+        bledne = bledne | (przyrost > MAX_M3_H_WETERANOW)
 
-    przepompowano_h = (
-        licznik_h.diff()
-        .where(lambda x: x >= 0)
-        .rename("przepompowano_m3")
-    )
+    przepompowano_h = przyrost.mask(bledne).rename("przepompowano_m3")
+    print("Odrzucone godzinowe skoki/cofnięcia licznika:", int(bledne.sum()))
+    print("Kwantyle przyrostów po filtracji:")
+    print(przepompowano_h.quantile([0.5, 0.9, 0.99, 0.999]))
 
-    print("\nRozkład godzinowych przyrostów:")
-    print(
-        przepompowano_h.quantile(
-            [0.5, 0.90, 0.95, 0.99, 0.999]
-        )
-    )
-
-    print("Godziny powyżej 100 m³:", (przepompowano_h > 100).sum())
-    print("Godziny powyżej 1000 m³:", (przepompowano_h > 1000).sum())
-
-    df_ruda = przepompowano_h.to_frame().join(
-        df_rs_opady_h, how="left"
-    )
-
-    # Nie usuwamy godzin przed rollingiem.
-    df_ruda = classify_weather_periods(df_ruda)
-
-    print("\nPrzepływ według rodzaju pogody:")
-    print(
-        df_ruda.groupby("okres")["przepompowano_m3"]
-        .agg(["count", "mean", "median"])
-        .round(2)
-    )
-
-    print("\nBrakujące godzinowe przepływy:")
-    print(df_ruda["przepompowano_m3"].isna().sum())
-
-    print("\nNajwiększe przyrosty m3:")
-    print(df_ruda["przepompowano_m3"].nlargest(5))
-
-
-
-# ENERGIA RUDY ŚLĄSKIEJ — WETERANÓW I ZMP
-
-wyniki_ruda = {}
-
-for stacja in ["weteranow", "zmp"]:
-
+    # ENERGIA: według dotychczasowych danych — godzinowe kWh,
+    # a nie licznik narastający. Dlatego NIE wywołujemy diff().
     energia = pd.read_parquet(
-        RUDA_PATH / f"energia-{stacja}.parquet",
-        columns=["Data_czas", "Strefa", "Wartosc_kWh"]
+        RUDA / f"energia-{stacja}.parquet",
+        columns=["Data_czas", "Strefa", "Wartosc_kWh"],
     )
+    czas = pd.DatetimeIndex(pd.to_datetime(energia["Data_czas"], errors="coerce"))
+    if czas.tz is None:
+        czas = czas.tz_localize(
+            "Europe/Warsaw", ambiguous="NaT", nonexistent="NaT"
+        )
+    czas = czas.tz_convert(STALA_STREFA)
 
-    # Niejednoznaczne jesienne godziny pomijamy.
-    energia = set_timezone(
-        energia,
-        ambiguous="NaT"
-    )
-
-    energia = energia.loc[
-        energia.index.notna()
-    ].copy()
+    print("Odrzucone niejednoznaczne/nieistniejące daty energii:", int(czas.isna().sum()))
+    energia.index = czas
+    energia = energia.loc[energia.index.notna()].copy()
+    energia.index.name = "Data_czas"
 
     energia["Wartosc_kWh"] = pd.to_numeric(
-        energia["Wartosc_kWh"].astype(str)
-        .str.replace(",", ".", regex=False),
-        errors="coerce"
+        energia["Wartosc_kWh"].astype(str).str.replace(",", ".", regex=False),
+        errors="coerce",
     )
+    energia.loc[energia["Wartosc_kWh"] < 0, "Wartosc_kWh"] = float("nan")
 
-    # Sprawdzamy, czy każdej godzinie odpowiada
-    # najwyżej jeden pomiar.
-    if energia.index.has_duplicates:
-        raise ValueError(
-            f"{stacja}: zduplikowane daty energii. "
-            "Sprawdź rekordy przed agregacją."
-        )
+    # Przy kilku odczytach w tej samej godzinie wybieramy pierwszy
+    # chronologicznie. Dla identycznych znaczników czasu zachowujemy
+    # kolejność z pliku źródłowego. Nie sumujemy godzinowych kWh.
+    energia = energia.sort_index(kind="stable")
+    wielokrotne_godziny = (
+        energia["Wartosc_kWh"].resample("h").size() > 1
+    )
+    print("Godziny z wieloma odczytami energii (wybrano pierwszy):", int(wielokrotne_godziny.sum()))
 
-    # Energia jest już zużyciem w interwale,
-    # dlatego nie używamy .diff().
     energia_h = (
         energia["Wartosc_kWh"]
-        .sort_index()
-        .asfreq("h")
+        .resample("h").first()
         .rename("energia_kwh")
     )
 
-    # Opady z poprzedniego bloku analizy Rudy
-    df = energia_h.to_frame().join(
-        opady_h, how="left"
-    )
+    # Wspólne, godzinowe wejście do analizy i dalszych prac zespołu.
+    df_ruda = pd.concat([przepompowano_h, energia_h], axis=1).sort_index()
+    df_ruda = df_ruda.join(opady_h, how="left").asfreq("h")
 
-    df = classify_weather_periods(df)
+    if stacja == "zmp":
+        # Licznik ZMP praktycznie nie zmienia wartości — nie udajemy,
+        # że zerowy przyrost oznacza brak ścieków. Zostawiamy go do kontroli.
+        df_ruda["przepompowano_m3_scada"] = df_ruda["przepompowano_m3"]
+        df_ruda["przepompowano_m3"] = float("nan")
 
-    # Tylko okresy suche z poprawnym pomiarem
-    dry = df.loc[
-        df["okres"].eq("suchy")
-        & df["energia_kwh"].notna()
-    ]
+    # Gotowe dane dla modeli: oryginalnych pomiarów nie interpolujemy.
+    df_ruda.to_parquet(RUDA / f"godzinowe-{stacja}.parquet")
+    print("Zapisano godzinowe dane:", RUDA / f"godzinowe-{stacja}.parquet")
+    print("Braki w danych:")
+    print(df_ruda[["przepompowano_m3", "energia_kwh", "opad_mm"]].isna().sum())
 
-    # Typowe zużycie energii w miesiącu i godzinie
-    stats = dry.groupby(
-        ["miesiac", "godzina"]
-    )["energia_kwh"].agg(["median", "count"])
+    folder = REPORTS / f"ruda-{stacja}"
+    folder.mkdir(parents=True, exist_ok=True)
 
-    # Wymagamy co najmniej 5 suchych obserwacji
-    stats.loc[
-        stats["count"] < 5, "median"
-    ] = float("nan")
+    if stacja == "weteranow":
+        # Pełna analiza m³ + kWh, jeśli istnieją suche pomiary obu liczników.
+        wynik = run_business_analysis(df_ruda, price=CENA_KWH)
+        print("\nPodsumowanie biznesowe:")
+        print(wynik["summary"])
+        print("\nNajdroższe epizody:")
+        print(wynik["episodes"].head(5))
+        wynik["detail"].to_parquet(folder / "godziny.parquet")
+        wynik["episodes"].to_csv(folder / "epizody.csv")
+        wynik["monthly"].to_csv(folder / "miesiace.csv")
 
-    df = df.join(
-        stats["median"].rename("bazowe_kwh"),
-        on=["miesiac", "godzina"]
-    )
+    else:
+        # ZMP: tylko energia względem suchej pogody (brak wiarygodnych m³).
+        df = classify_weather_periods(df_ruda)
+        dry = df.loc[df["okres"].eq("suchy") & df["energia_kwh"].notna()]
+        stats = dry.groupby(["miesiac", "godzina"])["energia_kwh"].agg(["median", "count"])
+        stats.loc[stats["count"] < 5, "median"] = float("nan")
+        df = df.join(stats["median"].rename("bazowe_kwh"), on=["miesiac", "godzina"])
+        fallback = dry.groupby("godzina")["energia_kwh"].median()
+        df["bazowe_kwh"] = df["bazowe_kwh"].fillna(df["godzina"].map(fallback))
 
-    # Fallback: typowe zużycie o tej godzinie
-    # ze wszystkich suchych okresów
-    fallback = dry.groupby(
-        "godzina"
-    )["energia_kwh"].median()
+        wet = df["okres"].eq("mokry")
+        df["nadwyzka_kwh"] = (df["energia_kwh"] - df["bazowe_kwh"]).where(wet)
+        df["bilans_zl"] = df["nadwyzka_kwh"] * CENA_KWH
 
-    df["bazowe_kwh"] = (
-        df["bazowe_kwh"]
-        .fillna(df["godzina"].map(fallback))
-    )
-
-    wet = df["okres"].eq("mokry")
-
-    df["nadwyzka_kwh"] = (
-        df["energia_kwh"] - df["bazowe_kwh"]
-    ).where(wet)
-
-    # Cena: 1 zł/kWh
-    df["bilans_zl"] = df["nadwyzka_kwh"]
-
-    wyniki_ruda[stacja] = df
-
-    print(f"\n===== {stacja.upper()} =====")
-
-    print("\nŚrednie zużycie energii:")
-    print(
-        df.groupby("okres")["energia_kwh"]
-        .agg(["count", "mean", "median"])
-        .round(2)
-    )
-
-    print("\nMokre godziny z wyceną:")
-    print(
-        df.loc[wet, "nadwyzka_kwh"].count(),
-        "/",
-        wet.sum()
-    )
-
-    print("\nBilans energii względem suchego baseline'u:")
-    print(
-        round(df["nadwyzka_kwh"].sum(), 2),
-        "kWh"
-    )
-
-    print("\nBilans przy 1 zł/kWh:")
-    print(
-        round(df["bilans_zl"].sum(), 2),
-        "zł"
-    )
-
+        print("\nMokre godziny z wyceną:", int(df.loc[wet, "nadwyzka_kwh"].count()), "/", int(wet.sum()))
+        print("Bilans kosztu energii w mokrych godzinach [zł]:", round(df["bilans_zl"].sum(), 2))
+        df.to_parquet(folder / "godziny.parquet")
