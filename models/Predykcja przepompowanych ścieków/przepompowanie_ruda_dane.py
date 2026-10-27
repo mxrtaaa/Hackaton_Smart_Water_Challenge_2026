@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import sys
 from pathlib import Path
+from datetime import timedelta, timezone
 
 src_path = Path().resolve().parents[1] / 'src'
 if str(src_path) not in sys.path:
@@ -9,7 +10,25 @@ if str(src_path) not in sys.path:
 
 from scada_prepare_data import load_scada_weterani
 from sciezka_projektu import get_project_root
+from data_preparation import set_timezone
 
+def fix_tz_local(df, time_col="Data_czas"):
+    df = df.copy()
+    if time_col in df.columns:
+        df[time_col] = pd.to_datetime(df[time_col])
+        df = df.set_index(time_col)
+
+    df = df.sort_index()
+
+    if df.index.tz is None:
+        # Tu omijamy błąd 31 marca i 27 października bez ruszania data_preparation.py:
+        df.index = df.index.tz_localize(
+            "Europe/Warsaw", ambiguous="NaT", nonexistent="shift_forward"
+        )
+
+    df = df[df.index.notna()]
+    df.index = df.index.tz_convert(timezone(timedelta(hours=1)))
+    return df
 
 def przygotuj_dane():
     PROJECT_ROOT = get_project_root()
@@ -18,10 +37,8 @@ def przygotuj_dane():
     df_rs_opady = pd.read_parquet(DATA_PATH / "suma_opadow.parquet")
     df_weteranow = load_scada_weterani()
 
-
-
-    df_rs_opady["Data_czas"] = pd.to_datetime(df_rs_opady["Data_czas"])
-    df_rs_opady = df_rs_opady.set_index("Data_czas").sort_index()
+    df_weteranow = fix_tz_local(df_weteranow)
+    df_rs_opady = fix_tz_local(df_rs_opady)
 
     df_rs_opady = df_rs_opady.groupby(level=0).agg({"suma_opadu_mm": "sum"})
 

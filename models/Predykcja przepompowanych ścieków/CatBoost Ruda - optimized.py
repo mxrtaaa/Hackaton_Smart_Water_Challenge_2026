@@ -27,7 +27,7 @@ y_test = y.iloc[train_end:]
 
 
 
-best_params_median = {'learning_rate': 0.03707109848547523, 'depth': 4, 'l2_leaf_reg': 2.6189752967638804, 'random_strength': 0.9383200576163983}
+best_params_median = {'learning_rate': 0.09521729019895707, 'depth': 7, 'l2_leaf_reg': 11.7430155996537, 'random_strength': 0.06321982183043345}
 # CATBOOST
 from catboost import CatBoostRegressor
 
@@ -51,7 +51,7 @@ print(f"\nOstateczne MAE na zbiorze TESTOWYM: {final_mae:.4f}")
 
 
 
-best_params_q97 = {'learning_rate': 0.02094487425738646, 'depth': 8, 'l2_leaf_reg': 16.323444426796154, 'random_strength': 2.019641509305754}
+best_params_q97 = {'learning_rate': 0.04219308168946424, 'depth': 8, 'l2_leaf_reg': 17.716889733344214, 'random_strength': 1.9196245935896221}
 
 final_cb_q97 = CatBoostRegressor(
     **best_params_q97,
