@@ -22,14 +22,13 @@ DATA = ROOT / "data" / "processed"
 REPORTS = ROOT / "reports"
 CENA_KWH = 1.0
 
-# Ustalony roboczo przez zespół próg dla Weteranów.
-# Nie jest potwierdzoną maksymalną wydajnością przepompowni.
+# Ustalony roboczo próg dla Weteranów.
 MAX_M3_H_WETERANOW = 100.0
 STALA_STREFA = timezone(timedelta(hours=1))
 
 
 # ============================================================================
-# CHORZÓW — pozostawiamy sprawdzone przetwarzanie
+# CHORZÓW
 # ============================================================================
 print("\n========== CHORZÓW ==========")
 

@@ -4,9 +4,10 @@ import sys
 from pathlib import Path
 from datetime import timedelta, timezone
 
-src_path = Path().resolve().parents[1] / 'src'
+src_path = Path(__file__).resolve().parents[2] / "src"
+
 if str(src_path) not in sys.path:
-    sys.path.append(str(src_path))
+    sys.path.insert(0, str(src_path))
 
 from scada_prepare_data import load_scada_weterani
 from sciezka_projektu import get_project_root
