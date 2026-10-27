@@ -40,6 +40,8 @@ def przygotuj_dane_zuzycia_energii():
     #print(df[["energia"]].head(10))
 
     df.head()
+    df_ch_opady = set_timezone(df_ch_opady)
+    df_ch_opady = df_ch_opady.sort_index()
     df_ch_opady = df_ch_opady.groupby(level=0).agg({"suma_opadu_mm": "sum"})
     # Godzinowe zużycie energii z licznika narastającego
     hourly = df["energia"].resample("1h").last()
