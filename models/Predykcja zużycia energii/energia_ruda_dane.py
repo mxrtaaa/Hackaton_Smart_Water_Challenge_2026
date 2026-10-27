@@ -45,10 +45,10 @@ def przygotuj_dane():
     df_ch_opady = df_ch_opady.sort_index()
     df_ch_opady = df_ch_opady.groupby(level=0).agg({"suma_opadu_mm": "sum"})
     # Godzinowe zużycie energii z licznika narastającego
-    hourly = df["energia"].resample("1h").last()
+    hourly = df["energia"].resample("1h").mean()
 
     df_1h = pd.DataFrame({
-        "zuzycie_energii": hourly.diff()
+        "zuzycie_energii": hourly
     })
 
     # Reset licznika lub nieprawidłowy odczyt
