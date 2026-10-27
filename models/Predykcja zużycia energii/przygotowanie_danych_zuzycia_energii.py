@@ -2,13 +2,15 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import sys
-from datetime import timezone, timedelta
 
 src_path = Path(__file__).resolve().parents[2] / 'src'
 if str(src_path) not in sys.path:
     sys.path.append(str(src_path))
 
 from sciezka_projektu import get_project_root
+from data_preparation import set_timezone
+
+
 def przygotuj_dane_zuzycia_energii():
     PROJECT_ROOT = get_project_root()
 
@@ -22,23 +24,7 @@ def przygotuj_dane_zuzycia_energii():
     df["Sposób_pomiaru"] = df["Sposób_pomiaru"].astype(str).str.strip()
     df = df[df["Sposób_pomiaru"] == "Wartość z pomiaru"].copy()
 
-    # zamiana stref czasowych
-    
-    if "Data_czas" in df.columns:
-        df["Data_czas"] = pd.to_datetime(df["Data_czas"])
-        df = df.set_index("Data_czas")
-
-    if df.index.tz is None:
-        df.index = df.index.tz_localize(
-            "Europe/Warsaw",
-            ambiguous="infer",
-            nonexistent="raise"
-        )
-
-    df.index = df.index.tz_convert(
-        timezone(timedelta(hours=1))
-    )
-
+    df = set_timezone(df)
 
     df = df.rename(columns={"Zuzycie_energii_elektrycznej": "energia"})
 
