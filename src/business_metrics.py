@@ -62,29 +62,33 @@ def classify_weather_periods(
     return result
 
 
-def calculate_dry_baseline(df, min_samples=5):
+def calculate_dry_baseline(df, min_samples=5, *, dry_only=True):
+    """Mediany profilu kalendarzowego; domyślnie tylko z suchych godzin.
+
+    dry_only=False jest używane przez calculate_calendar_baseline, aby
+    porównanie bez pogody zachowało te same grupy i minimum próbek.
+    """
     result = df.copy()
 
     required = {
-        "okres", "miesiac", "godzina", "weekend",
+        "miesiac", "godzina", "weekend",
         "przepompowano_m3", "energia_kwh"
     }
+    if dry_only:
+        required.add("okres")
 
     missing = required - set(result.columns)
     if missing:
         raise KeyError(f"Brakuje kolumn: {sorted(missing)}")
 
-    # Do baseline'u bierzemy tylko suche godziny
-    # z kompletnymi pomiarami przepływu i energii.
-    dry = result.loc[
-        result["okres"].eq("suchy")
-        & result[
-            ["przepompowano_m3", "energia_kwh"]
-        ].notna().all(axis=1)
-    ].copy()
+    valid = result[["przepompowano_m3", "energia_kwh"]].notna().all(axis=1)
+    if dry_only:
+        valid &= result["okres"].eq("suchy")
+    reference = result.loc[valid].copy()
 
-    if len(dry) < min_samples:
-        raise ValueError("Za mało kompletnych godzin suchych.")
+    if len(reference) < min_samples:
+        raise ValueError("Za mało kompletnych godzin suchych." if dry_only
+                         else "Za mało kompletnych godzin profilu kalendarzowego.")
 
     result["bazowe_m3"] = np.nan
     result["bazowe_kwh"] = np.nan
@@ -116,7 +120,7 @@ def calculate_dry_baseline(df, min_samples=5):
     ]
 
     for label, keys in levels:
-        stats = dry.groupby(keys).agg(
+        stats = reference.groupby(keys).agg(
             candidate_m3=("przepompowano_m3", "median"),
             candidate_kwh=("energia_kwh", "median"),
             n=("przepompowano_m3", "size")
@@ -151,9 +155,31 @@ def calculate_dry_baseline(df, min_samples=5):
     return result
 
 
+def calculate_calendar_baseline(df, min_samples=5):
+    """Profil bez pogody z wszystkich kompletnych historycznych m³ i kWh.
 
-def calculate_excess(df, price_per_kwh=1.0):
-    """Różnice względem baseline'u w okresach mokrych."""
+    Nie wymaga opadów ani klasyfikacji okresów. Korzysta z tych samych median,
+    grup kalendarzowych i kolejności fallback jak calculate_dry_baseline.
+    """
+    if not isinstance(df.index, pd.DatetimeIndex) or df.index.tz is None:
+        raise ValueError("Wymagany jest DatetimeIndex ze strefą czasową.")
+    if df.index.has_duplicates:
+        raise ValueError("Indeks zawiera duplikaty dat.")
+    result = df.copy()
+    local_time = result.index.tz_convert("Europe/Warsaw")
+    result["miesiac"] = local_time.month
+    result["godzina"] = local_time.hour
+    result["weekend"] = (local_time.dayofweek >= 5).astype(int)
+    return calculate_dry_baseline(result, min_samples, dry_only=False)
+
+
+
+def calculate_excess(df, price_per_kwh=1.0, *, wet_only=True):
+    """Różnice względem baseline'u, domyślnie w okresach mokrych.
+
+    wet_only=False pozwala wycenić wskazane godziny anomalii Q97 niezależnie
+    od opadów, z przekazanym baseline'em modelowym lub kalendarzowym.
+    """
 
     result = df.copy()
 
@@ -164,10 +190,9 @@ def calculate_excess(df, price_per_kwh=1.0):
         "bazowe_kwh"
     ]
 
-    valid = (
-        result["okres"].eq("mokry")
-        & result[required].notna().all(axis=1)
-    )
+    valid = result[required].notna().all(axis=1)
+    if wet_only:
+        valid &= result["okres"].eq("mokry")
 
     # Zachowujemy również ujemne różnice.
     # Nie obcinamy każdej godziny do zera.
@@ -184,6 +209,23 @@ def calculate_excess(df, price_per_kwh=1.0):
     )
 
     return result
+
+
+def calculate_anomaly_cost(df, price_per_kwh=CENA_ENERGII):
+    """Koszt netto wskazanych godzin jednej anomalii względem bazowych kWh.
+
+    Wymaga kompletu danych dla każdej godziny. Zachowuje ujemne różnice
+    godzinowe, a do zera obcina dopiero ich sumę, jak summarize_rain_events.
+    df zawiera rzeczywiste m³/kWh oraz bazowe_m3 i bazowe_kwh danego wariantu.
+    """
+    detail = calculate_excess(df, price_per_kwh, wet_only=False)
+    hours = len(detail)
+    priced = int(detail["nadwyzka_kwh"].count())
+    complete = hours > 0 and priced == hours
+    excess = detail["nadwyzka_kwh"].sum() if complete else np.nan
+    return {"godziny": hours, "godziny_wycenione": priced, "kompletny": complete,
+            "nadwyzka_kwh": excess,
+            "koszt_zl": max(0.0, excess) * price_per_kwh if complete else np.nan}
 
 
 def summarize_rain_events(df, price_per_kwh=1.0):

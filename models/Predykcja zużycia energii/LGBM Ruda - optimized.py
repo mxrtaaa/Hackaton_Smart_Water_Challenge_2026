@@ -3,7 +3,6 @@ import numpy as np
 from pathlib import Path
 import sys
 from lightgbm import LGBMRegressor
-from przygotowanie_danych_zuzycia_energii import przygotuj_dane_zuzycia_energii
 
 from energia_ruda_dane import przygotuj_dane as przygotuj_dane_energia
 

@@ -3,16 +3,15 @@ import numpy as np
 from pathlib import Path
 import sys
 from lightgbm import LGBMRegressor
-from przygotowanie_danych_zuzycia_energii import przygotuj_dane_zuzycia_energii
 
-from energia_ruda_dane import przygotuj_dane as przygotuj_dane_energia
+from energia_rybnik_dane import przygotuj_dane_energia
 
-X_energia, Y_energia = przygotuj_dane_energia()
+X_energia, Y_energia,_,_ = przygotuj_dane_energia()
 models_path = Path.cwd().parents[0]
 sys.path.append(str(models_path / "Predykcja przepompowanych ścieków"))
-from przepompowanie_rybnik_dane import przygotuj_dane_przepompowanie_pz1
+from przepompowanie_rybnik_dane import przygotuj_dane_przepompowanie
 
-X_przeplyw, Y_przeplyw = przygotuj_dane_przepompowanie_pz1()
+X_przeplyw, Y_przeplyw,_,_ = przygotuj_dane_przepompowanie()
 
 features = [
     # Kalendarz
@@ -45,14 +44,13 @@ X_test = X.iloc[train_end:]
 y_train = y.iloc[:train_end]
 y_test = y.iloc[train_end:]
 
-
-best_params_l1 = {'learning_rate': 0.020199610304989114, 'num_leaves': 36, 'min_child_samples': 24, 'subsample': 0.770384612026848, 'colsample_bytree': 0.9221233904338164, 'reg_alpha': 0.0011863471828765819, 'reg_lambda': 0.00303611279227012}
+best_params_l1 = {'learning_rate': 0.05130883217351727, 'num_leaves': 40, 'min_child_samples': 21, 'subsample': 0.7336150276370695, 'colsample_bytree': 0.8357430448288825, 'reg_alpha': 0.014856073742694074, 'reg_lambda': 1.5602630464195817}
 
 # 2. Finalny trening na sztywnej liczbie drzew
 final_lgbm_l1 = LGBMRegressor(
     objective="l1",
     **best_params_l1,
-    n_estimators=210,   # dokładnie tyle, ile dało minimum błędu
+    n_estimators=120,   # dokładnie tyle, ile dało minimum błędu
     random_state=42,
     n_jobs=-1,
     verbosity=-1
@@ -65,13 +63,13 @@ final_mae = np.mean(np.abs(y_test - y_pred_test))
 print(f"\nOstateczne MAE na zbiorze TESTOWYM: {final_mae:.4f}")
 
 
-best_params_q97 = {'learning_rate': 0.05151661242024018, 'num_leaves': 32, 'min_child_samples': 8, 'subsample': 0.713562588867843, 'colsample_bytree': 0.6995608051638371, 'reg_alpha': 0.0013479702461600001, 'reg_lambda': 0.015956274493326334}
+best_params_q97 = {'learning_rate': 0.012833848333124615, 'num_leaves': 12, 'min_child_samples': 23, 'subsample': 0.9442916635259564, 'colsample_bytree': 0.7282473358072009, 'reg_alpha': 0.35597877159976404, 'reg_lambda': 0.010277433508060672}
 
 final_lgbm_q97 = LGBMRegressor(
     objective="quantile",
-    alpha=0.993,
+    alpha=0.97,
     **best_params_q97,
-    n_estimators=360,
+    n_estimators=600,
     random_state=42,
     n_jobs=-1,
     verbosity=-1
