@@ -36,9 +36,14 @@ test('PZ1 and PNB1 have separate final models, histories, future costs and tabs'
       assert.equal(data.source, 'rybnik-final-models');
       assert.equal(data.businessEngine, 'python');
       assert.equal(data.history.length, 720);
-      assert.ok(data.history.some(r => r.energia_prognoza !== null && r.energia_kwh !== null && r.energia_q97 !== null));
+      assert.ok(data.history.some(r => r.energia_prognoza !== null && r.energia_q97 !== null));
+      assert.ok(data.history.some(r => r.energia_kwh !== null));
+      assert.notEqual(data.history.at(-1).energia_kwh, null);
+      assert.notEqual(data.history.at(-1).przepompowano_m3, null);
       assert.ok(data.provenance.models.every(m => m.path.includes('final') && m.path.includes(`_${object}_`)));
-      assert.ok(data.provenance.files.every(f => !f.file.includes('godzinowe')));
+      assert.ok(data.provenance.files.some(f => f.file.includes(`godzinowe-${object}-final.parquet`)));
+      assert.ok(data.provenance.files.some(f => f.file.includes('suma_opadow.parquet')));
+      assert.equal(day(data.asOf), object === 'pz1' ? '2025-10-01' : '2026-09-28');
       const date = day(data.asOf), rows = data.history.filter(r => day(r.time) === date);
       const cost = await fetch(`${address}/api/cost-scenarios`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -52,7 +57,9 @@ test('PZ1 and PNB1 have separate final models, histories, future costs and tabs'
       const expected = rows.reduce((sum, r) => sum + (r.energia_prognoza ?? 0), 0);
       assert.ok(Math.abs(result[1].valuation.totalCostZl - expected * 2) < 1e-8);
       if (data.weatherForecast.status !== 'unavailable') {
+        assert.equal(data.forecast.length, data.weatherForecast.expectedHours);
         assert.equal(data.forecast.length, 720);
+        assert.equal(Date.parse(data.forecast.at(-1).time) - Date.parse(data.forecast[0].time), 719 * 3600000);
         assert.equal(data.weatherForecast.ensembleAggregation, 'none');
         assert.equal(data.weatherForecast.ensembleMember, 0);
         assert.ok(data.forecast.every(r => r.data_kind === 'prediction' && r.przepompowano_m3 === null && r.energia_kwh === null));

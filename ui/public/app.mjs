@@ -90,6 +90,7 @@ const palette = {
 
 const isWeteranow = () => data?.station.id === 'ruda-weteranow';
 const hasModelOptions = () => isWeteranow() || data?.station.id.startsWith('rybnik_');
+const forecastPeriod = () => '30 dni';
 
 function chart(
   target,
@@ -173,7 +174,7 @@ function chart(
         text-anchor="end"
         class="forecast-caption"
       >
-        PREDYKCJA · 30 DNI
+        PREDYKCJA · ${esc(forecastPeriod().toLocaleUpperCase('pl-PL'))}
       </text>
     `;
   }
@@ -476,7 +477,9 @@ function updateKpis() {
     `Pomiar archiwalny · ${date(last.time)}`;
 
   $('#energy-foot').textContent =
-    `Pomiar archiwalny · ${date(last.time)}`;
+    last.energyKwh === null
+      ? `Brak pomiaru w godzinie ${date(last.time)}`
+      : `Pomiar archiwalny · ${date(last.time)}`;
 
   $('#flow-foot').title = interval;
   $('#energy-foot').title = interval;
@@ -603,7 +606,7 @@ function renderCharts() {
     ? `PREDYKCJE · ${
         future.length
           ? day(future[0].time) + '–' + day(future.at(-1).time)
-          : 'kolejne 30 dni'
+          : forecastPeriod()
       }`
     : `POMIARY · ${range} dni archiwum do ${day(data.asOf)}`;
 
@@ -614,7 +617,7 @@ function renderCharts() {
     : `Historia jest liczona wstecz od ${date(data.asOf)}; nie są to pomiary na żywo.`;
 
   $('#quantile-note').textContent = isFuture
-    ? 'Q97 to górny kwantyl modelu przy zadanej pogodzie. Nie jest drugą prognozą bazową ani pełnym zakresem niepewności na 30 dni.'
+    ? 'Q97 to górny kwantyl modelu przy zadanej pogodzie. Nie jest drugą prognozą bazową ani pełnym zakresem niepewności prognozy.'
     : 'Q97 służy do identyfikacji przekroczeń pomiarów; nie określa przyczyny.';
 
   document.querySelectorAll('.actual-legend').forEach(el => {
@@ -839,7 +842,7 @@ async function calculate() {
   $('#calc-error').hidden = true;
 
   const type = scope.period === 'forecast'
-    ? 'PREDYKCJA · przyszłe 30 dni'
+    ? `PREDYKCJA · ${forecastPeriod()}`
     : `${
         hasModelOptions() && $('#calc-basis').value === 'predicted'
           ? 'PREDYKCJA HISTORYCZNA'
@@ -1212,6 +1215,10 @@ async function load() {
     }
 
     data = body;
+    $('#forecast-flow-label').textContent = `Pompowanie · prognoza ${forecastPeriod()}`;
+    $('#forecast-energy-label').textContent = `Energia · prognoza ${forecastPeriod()}`;
+    $('[data-range="future"]').textContent = `Prognoza ${forecastPeriod()}`;
+    $('#calc-period option[value="forecast30"]').textContent = `Prognoza ${forecastPeriod()}`;
 
     // Walidacja kontraktu danych
 
@@ -1238,8 +1245,15 @@ async function load() {
         ? 'Tryb demonstracyjny.'
         : `
           ${data.station.name}: pomiary do ${date(data.asOf)}
-          (ostatnia pełna godzina archiwum), bez uzupełniania braków.
+          (${data.station.id.startsWith('rybnik_')
+            ? 'ostatnia godzina z jednoczesnym pomiarem pompowania i energii'
+            : 'ostatnia pełna godzina archiwum'}), bez uzupełniania braków.
           Historia 7/14/30 dni jest liczona wstecz od tej daty.
+          ${data.provenance?.lastMeasurements
+            ? 'Ostatni pomiar energii: ' + (data.provenance.lastMeasurements.energia_kwh
+                ? date(data.provenance.lastMeasurements.energia_kwh) : 'brak') +
+              '. Brakujące kWh pozostają nieznane.'
+            : ''}
           Prognoza to oddzielne przyszłe daty i wyłącznie wyniki
           modeli z pogodą Open-Meteo.
           ${
