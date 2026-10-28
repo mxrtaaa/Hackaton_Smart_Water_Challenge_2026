@@ -114,8 +114,10 @@ def przygotuj_dane_przepompowanie():
         X = df_lgbm.loc[mask, features].copy()
         y = df_lgbm.loc[mask, "przepompowano"].copy()
         wyniki.append((X,y))
+
     X_pz1 = wyniki[0][0]
     y_pz1 = wyniki[0][1]
     X_pnb1 = wyniki[1][0]
     y_pnb1 = wyniki[1][1]
+    
     return X_pz1, y_pz1, X_pnb1, y_pnb1
