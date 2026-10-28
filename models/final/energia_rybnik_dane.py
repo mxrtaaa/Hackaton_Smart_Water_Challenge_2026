@@ -48,8 +48,8 @@ def przygotuj_dane_energia():
     DATA_PATH = PROJECT_ROOT / "data" / "processed" / "Rybnik"
 
     # WCZYTANIE DANYCH
-    df_ch_energia_pz1 = pd.read_parquet(DATA_PATH / "raport-pz1.parquet")
-    df_ch_energia_pnb1 = pd.read_parquet(DATA_PATH / "raport-pnb1.parquet")
+    df_ch_energia_pz1 = pd.read_parquet(DATA_PATH / "godzinowe-pz1-final.parquet")
+    df_ch_energia_pnb1 = pd.read_parquet(DATA_PATH / "godzinowe-pnb1-final.parquet")
 
     df_ch_opady = pd.read_parquet(DATA_PATH / "suma_opadow.parquet")
     
@@ -58,8 +58,8 @@ def przygotuj_dane_energia():
         # ENERGIA
         df_energia = fix_tz_local(df)
 
-        df_energia["Wartosc_kWh_kvar"] = pd.to_numeric(
-            df_energia["Wartosc_kWh_kvar"]
+        df_energia["Wartosc_kwh"] = pd.to_numeric(
+            df_energia["Wartosc_kwh"]
             .astype(str)
             .str.replace(",", ".", regex=False),
             errors="coerce"
