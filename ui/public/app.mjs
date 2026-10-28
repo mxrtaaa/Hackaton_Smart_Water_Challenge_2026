@@ -89,6 +89,7 @@ const palette = {
 };
 
 const isWeteranow = () => data?.station.id === 'ruda-weteranow';
+const hasModelOptions = () => isWeteranow() || data?.station.id.startsWith('rybnik_');
 
 function chart(
   target,
@@ -671,7 +672,7 @@ function renderCharts() {
       }
     ];
 
-    if (isWeteranow()) {
+    if (hasModelOptions()) {
       energy.push({
         key: 'energia_q97',
         label: 'Q97 energii',
@@ -781,9 +782,9 @@ function calculationScope() {
 }
 
 function customCostOptions(scope) {
-  $('#calc-custom-dates').hidden = !isWeteranow();
+  $('#calc-custom-dates').hidden = !hasModelOptions();
 
-  if (!isWeteranow()) {
+  if (!hasModelOptions()) {
     return {};
   }
 
@@ -840,7 +841,7 @@ async function calculate() {
   const type = scope.period === 'forecast'
     ? 'PREDYKCJA · przyszłe 30 dni'
     : `${
-        isWeteranow() && $('#calc-basis').value === 'predicted'
+        hasModelOptions() && $('#calc-basis').value === 'predicted'
           ? 'PREDYKCJA HISTORYCZNA'
           : 'POMIAR'
       } · ${scope.days} dni historii`;
@@ -908,9 +909,9 @@ async function calculate() {
     } else {
       // Kalkulator lokalny
 
-      if (isWeteranow()) {
+      if (hasModelOptions()) {
         throw new Error(
-          'Kalkulator Weteranów wymaga połączonego backendu Python.'
+          'Kalkulator tego obiektu wymaga połączonego backendu Python.'
         );
       }
 
@@ -1047,9 +1048,9 @@ async function calculate() {
       </div>
     `;
 
-    // Dodatkowe szczegóły dla Weteranów
+    // Dodatkowe sumy i zakres dat dla obiektów z pełnym kalkulatorem.
 
-    if (isWeteranow() && v) {
+    if (hasModelOptions() && v) {
       const card = $('#calc-results .decision');
 
       card.querySelector('h3').insertAdjacentHTML(
@@ -1069,7 +1070,7 @@ async function calculate() {
         scope.period === 'history'
       ) {
         card.querySelector('.step').textContent =
-          'PREDYKCJA HISTORYCZNA · WETERANÓW';
+          `PREDYKCJA HISTORYCZNA · ${data.station.name.toLocaleUpperCase('pl-PL')}`;
 
         card.querySelector('h3 + p + p').textContent =
           'Koszt predykcji historycznej · ' +
@@ -1166,10 +1167,7 @@ async function load() {
 
     $('#dashboard').hidden = true;
 
-    $('#station-code').textContent =
-      station === 'ruda-weteranow'
-        ? 'RS-01'
-        : 'CH-01';
+    $('#station-code').textContent = '…';
 
     $('#as-of').textContent =
       'Wczytywanie danych wybranej lokalizacji…';
@@ -1252,12 +1250,12 @@ async function load() {
           }
         `;
 
-    $('#energy-description').textContent = isWeteranow()
-      ? 'Weteranów: predykcja energii z przewidywanego pompowania i pogody; pomiar energii pokazany osobno.'
+    $('#energy-description').textContent = hasModelOptions()
+      ? `${data.station.name}: predykcja energii z przewidywanego pompowania i pogody; pomiar energii pokazany osobno.`
       : 'Wartości godzinowe · ta sama oś czasu co przepompowanie';
 
-    $('#energy-q97-legend').hidden = !isWeteranow();
-    $('#calc-custom-dates').hidden = !isWeteranow();
+    $('#energy-q97-legend').hidden = !hasModelOptions();
+    $('#calc-custom-dates').hidden = !hasModelOptions();
 
     $('#footer-location').textContent = data.station.name;
 
@@ -1407,7 +1405,7 @@ const initialStation = new URLSearchParams(
   location.search
 ).get('station');
 
-if (['chorzow', 'ruda-weteranow'].includes(initialStation)) {
+if ([...$('#station').options].some(option => option.value === initialStation)) {
   $('#station').value = initialStation;
 }
 

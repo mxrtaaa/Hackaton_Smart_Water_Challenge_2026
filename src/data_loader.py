@@ -1,5 +1,7 @@
 import pandas as pd
 from pathlib import Path
+from contextlib import redirect_stdout
+import sys
 if __package__:
     from .data_preparation import convert_meter_data, set_timezone
 else:
@@ -123,6 +125,85 @@ def load_processed_weteranow(root):
         "rawEnergyEnd": _local_time(pd.to_datetime(raw_energy["Data_czas"]).max()).isoformat(),
         "historyRule": "7/14/30 dni wstecz od ostatniej pełnej godziny archiwum Weteranów; braków nie interpolujemy.",
     }
+
+def rybnik_processed_paths(root, object_id):
+    """Osobne logi i raporty PZ1/PNB1; bez zamieniania obiektów."""
+    if object_id not in ("pz1", "pnb1"):
+        raise ValueError("Nieznany obiekt Rybnika.")
+    data = Path(root) / "data" / "processed" / "Rybnik"
+    return {"flow": data / f"{object_id}-2024.parquet",
+            "energy": data / f"raport-{object_id}.parquet",
+            "weather": data / "suma_opadow.parquet"}
+
+
+def load_processed_rybnik(root, object_id):
+    """Rzeczywiste godziny z logu licznika, raportu kWh i archiwum opadów.
+
+    Korzysta z istniejących funkcji przygotowania finałowych danych. Nie używa
+    niekompletnych godzinowe-*-final.parquet ani kodu treningu modeli.
+    """
+    if __package__:
+        from .wczytaj_rybnik_final import ustaw_czas, seria_godzinowa
+    else:
+        from wczytaj_rybnik_final import ustaw_czas, seria_godzinowa
+    root = Path(root)
+    paths = rybnik_processed_paths(root, object_id)
+    missing = [str(p.relative_to(root)) for p in paths.values() if not p.is_file()]
+    if missing:
+        raise FileNotFoundError("Brak plików Rybnika: " + ", ".join(missing))
+    raw_flow = pd.read_parquet(paths["flow"])
+    raw_energy = pd.read_parquet(paths["energy"])
+    expected_meter = {"pz1": "Q1sr_PZ1.2", "pnb1": "Q1sr_PN1"}[object_id]
+    flow = raw_flow.loc[raw_flow["Licznik"].astype(str).str.strip().eq(expected_meter)
+                        & raw_flow["Sposob_pomiaru"].astype(str).str.strip().eq("Wartość z pomiaru")].copy()
+    if flow.empty:
+        raise ValueError(f"Brak poprawnych odczytów licznika {expected_meter}.")
+    energy = raw_energy.loc[raw_energy["Rodzaj_energii"].astype(str).str.strip().eq("energia czynna pobrana")].copy()
+    if "Kompletnosc_procent" in energy:
+        energy = energy.loc[pd.to_numeric(energy["Kompletnosc_procent"], errors="coerce").eq(100)]
+    # Helper prints diagnostics; stdout of the UI backend is reserved for JSON.
+    with redirect_stdout(sys.stderr):
+        flow = ustaw_czas(flow)
+        flow = flow.sort_index(kind="stable").loc[lambda d: ~d.index.duplicated(keep="first")]
+        # Same validity cutoff as models/final/przepompowanie_rybnik_dane.py.
+        cutoff = pd.Timestamp("2024-03-19 13:00:00", tz=flow.index.tz)
+        flow = flow.loc[flow.index >= cutoff]
+        if flow.empty:
+            raise ValueError("Brak pomiarów po początku poprawnego okresu licznika.")
+        raw_end = flow.index.max()
+        pumping = seria_godzinowa(flow, "Wartosc", "licznik", "przepompowano_m3")
+        pumping = pumping.loc[pumping.index < raw_end.floor("h")]
+        energy = ustaw_czas(energy)
+        if energy.empty:
+            raise ValueError("Brak kompletnych pomiarów energii czynnej.")
+        energy = energy.sort_index(kind="stable").loc[lambda d: ~d.index.duplicated(keep="first")]
+        kwh = seria_godzinowa(energy, "Wartosc_kWh_kvar", "godzinowe", "energia_kwh")
+        rain = ustaw_czas(pd.read_parquet(paths["weather"]))
+    rain["suma_opadu_mm"] = pd.to_numeric(rain["suma_opadu_mm"], errors="coerce")
+    if rain["suma_opadu_mm"].lt(0).any():
+        raise ValueError("Ujemne opady historyczne Rybnika.")
+    rainfall = (rain["suma_opadu_mm"].groupby(level=0).sum(min_count=1)
+                .resample("h").sum(min_count=1).rename("opad_mm"))
+    if pumping.dropna().empty or kwh.dropna().empty:
+        raise ValueError("Brak godzinowych pomiarów m³ lub kWh Rybnika.")
+    end = min(pumping.last_valid_index(), kwh.last_valid_index())
+    start = max(pumping.index.min(), kwh.index.min())
+    frame = pd.concat([pumping, kwh], axis=1).sort_index().asfreq("h").loc[start:end]
+    if frame.empty:
+        raise ValueError("Brak wspólnego zakresu m³ i kWh Rybnika.")
+    frame = frame.join(rainfall)
+    return frame, {
+        "files": [{"file": str(p.relative_to(root)), "role": role} for p, role in
+                  ((paths["flow"], "Narastający licznik m³ → rzeczywiste przyrosty godzinowe"),
+                   (paths["energy"], "Raport energii czynnej pobranej, kompletność 100%; gotowe kWh"),
+                   (paths["weather"], "Archiwalne opady godzinowe"))],
+        "historyRule": "7/14/30 dni wstecz od ostatniej wspólnej pełnej godziny archiwum. Braki pozostają nieznane.",
+        "meter": expected_meter, "rawFlowEnd": raw_end.isoformat(),
+        "rawEnergyEnd": energy.index.max().isoformat(),
+        "validityCutoff": cutoff.isoformat(), "excludedLastPartialHour": True,
+        "note": "Źródłem są log i raport obiektu; niekompletne finałowe tabele godzinowe nie są używane.",
+    }
+
 
 if __name__ == "__main__":
     
