@@ -67,6 +67,29 @@ final_cb_q97.fit(X_train, y_train)
 
 q97_preds = final_cb_q97.predict(X_test)
 
+# DO ANALIZY BIZNESOWEJ ############
+
+from sciezka_projektu import get_project_root
+
+results_test = pd.DataFrame({
+    "rzeczywiste": y_test,
+    "prognoza": y_pred_test,
+    "q97": q97_preds,
+}, index=y_test.index)
+
+results_test["alarm"] = (
+    results_test["rzeczywiste"] > results_test["q97"]
+)
+
+output = get_project_root() / "reports" / "models"
+output.mkdir(parents=True, exist_ok=True)
+
+results_test.to_parquet(output / "rybnik_pz1_przeplyw.parquet")
+
+print("Zapisano:", output / "rybnik_pz1_przeplyw.parquet")
+
+#####################################33
+
 test_coverage = np.mean(y_test <= q97_preds)
 print(f"\nFinalne Coverage na zbiorze testowym: {test_coverage * 100:.2f}% (cel: 97.00%)")
 
