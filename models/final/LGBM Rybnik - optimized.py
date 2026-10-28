@@ -3,16 +3,15 @@ import numpy as np
 from pathlib import Path
 import sys
 from lightgbm import LGBMRegressor
-from przygotowanie_danych_zuzycia_energii import przygotuj_dane_zuzycia_energii
 
-from energia_ruda_dane import przygotuj_dane as przygotuj_dane_energia
+from energia_rybnik_dane import przygotuj_dane_energia
 
-X_energia, Y_energia = przygotuj_dane_energia()
+X_energia, Y_energia,_,_ = przygotuj_dane_energia()
 models_path = Path.cwd().parents[0]
 sys.path.append(str(models_path / "Predykcja przepompowanych ścieków"))
-from przepompowanie_rybnik_dane import przygotuj_dane_przepompowanie_pz1
+from przepompowanie_rybnik_dane import przygotuj_dane_przepompowanie
 
-X_przeplyw, Y_przeplyw = przygotuj_dane_przepompowanie_pz1()
+X_przeplyw, Y_przeplyw,_,_ = przygotuj_dane_przepompowanie()
 
 features = [
     # Kalendarz

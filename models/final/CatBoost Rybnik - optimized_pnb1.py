@@ -9,9 +9,9 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 
 
-from przepompowanie_rybnik_dane import przygotuj_dane_przepompowanie_pz1
+from przepompowanie_rybnik_dane import przygotuj_dane_przepompowanie
 
-X, y = przygotuj_dane_przepompowanie_pz1()
+_,_,X,y = przygotuj_dane_przepompowanie()
 
 train_end = int(len(X) * 0.7)
 
