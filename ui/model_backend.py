@@ -80,7 +80,7 @@ def asset_paths(station):
 
     if "object" in station:
         obj = station["object"]
-        return [rybnik_processed_paths(ROOT, obj)["flow"]] + [
+        return [rybnik_processed_paths(ROOT, obj)["hourly"]] + [
             FINAL_MODELS / f"rybnik_przepompowanie_{obj}_{kind}.cbm" for kind in ("median", "q97")
         ] + [FINAL_MODELS / f"rybnik_energia_{obj}_{kind}.txt" for kind in ("median", "q97")]
     if station["id"] == "ruda-weteranow":
@@ -171,9 +171,10 @@ def energy_features(frame, station_id):
     last_rain = frame.index.to_series().where(rain.shift(1) > 0.1).ffill()
     features["h_od_deszczu"] = ((frame.index.to_series() - last_rain).dt.total_seconds() / 3600).clip(upper=240)
 
-    # These energy models were trained using observed pumping as a feature.
-    # This is a conditional historical prediction, not a free-running forecast.
-    features["przepompowano"] = frame["przepompowano_m3"]
+    # The saved models use different names for the same pumping feature.
+    # The caller supplies measured pumping (Chorzów history) or model predictions.
+    pumping_feature = "przepompowano_m3" if station_id in ("rybnik_pz1", "rybnik_pnb1") else "przepompowano"
+    features[pumping_feature] = frame["przepompowano_m3"]
 
     return features
 
@@ -472,6 +473,7 @@ def _rybnik_forecast(station_id, signature, day, bucket):
     # Existing Rybnik weather coordinates from src/weather_loader.py.
     # Both objects use this weather point; there are no separate coordinates in the project.
     weather = load_weather_forecast(50.114718, 18.533368,
+                                   forecast_days=30,
                                    cache_path=ROOT / "ui" / ".runtime" / "rybnik-weather.json")
     return predict_station_future(detail, weather, exported_models(station_id, signature), station_id)
 
@@ -596,7 +598,7 @@ def dashboard(station_id):
         result["businessByRange"]["14"] = summarize(window_detail(detail, 14), CENA_ENERGII)
         result["provenance"].pop("report", None)
         result["provenance"].update(source_info)
-        result["provenance"]["energyMethod"] = "LightGBM obiektu z predykcją pompowania CatBoost i opadami; oddzielny pomiar kWh z raportu."
+        result["provenance"]["energyMethod"] = "LightGBM final obiektu: przepompowano_m3 = predykcja CatBoost, kalendarz i opady; rzeczywiste kWh z tabeli godzinowej są osobną serią."
         result["provenance"]["weatherCoordinates"] = {"latitude": 50.114718, "longitude": 18.533368,
                                                         "source": "Punkt Rybnika z src/weather_loader.py, wspólny dla PZ1 i PNB1."}
         result["historyTotals"] = {}

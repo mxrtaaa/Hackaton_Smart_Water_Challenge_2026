@@ -11,39 +11,38 @@ Adresy na porcie wypisanym przez serwer:
 - `/?station=rybnik_pz1`
 - `/?station=rybnik_pnb1`
 
-## Historia z logów i raportów
+## Historia z aktualnych tabel godzinowych
 
-`src/data_loader.py:load_processed_rybnik` korzysta z istniejących funkcji
-`ustaw_czas` i `seria_godzinowa` z `src/wczytaj_rybnik_final.py`.
-Nie czyta gotowych plików `godzinowe-*-final.parquet`.
+`src/data_loader.py:load_processed_rybnik` czyta gotowe tabele final z folderu
+`data/processed/Rybnik` wskazanego przez użytkownika, bez uruchamiania treningu.
+Nie wymaga starych logów liczników ani raportów.
 
-| Obiekt | Pompowanie: log licznika narastającego | Energia: raport godzinowy |
-| --- | --- | --- |
-| PZ1 | `data/processed/Rybnik/pz1-2024.parquet`, licznik `Q1sr_PZ1.2` | `data/processed/Rybnik/raport-pz1.parquet` |
-| PNB1 | `data/processed/Rybnik/pnb1-2024.parquet`, licznik `Q1sr_PN1` | `data/processed/Rybnik/raport-pnb1.parquet` |
+| Obiekt | Plik rzeczywistych m³ i kWh |
+| --- | --- |
+| PZ1 | `data/processed/Rybnik/godzinowe-pz1-final.parquet` |
+| PNB1 | `data/processed/Rybnik/godzinowe-pnb1-final.parquet` |
 
 Wspólne archiwalne opady: `data/processed/Rybnik/suma_opadow.parquet`.
 Nazwy z prośby zostały dopasowane do rzeczywistych nazw plików w repozytorium.
 
-Pompowanie: tylko „Wartość z pomiaru”, ostatni licznik na godzinę i różnica;
-ujemne przyrosty i brakujące godziny pozostają nieznane. Powtórzone znaczniki
-czasu zachowują pierwszy odczyt, jak w przygotowaniu modeli final.
-Odcięcie poprawnego okresu: 19.03.2024 13:00 UTC+1, zgodnie z kodem treningu final.
-Ostatni niepełny przedział logu jest odrzucany.
+Kolumny: `przepompowano_m3`, `energia_kwh`, `opad_mm`; indeks godzinowy ze stałą
+strefą UTC+1. m³ i kWh są już przyrostami, nie liczymy ponownie `diff()`.
+Opady historyczne pochodzą z `suma_opadow.parquet` (`Data_czas`, `suma_opadu_mm`);
+w aktualnych plikach zgadzają się z `opad_mm` tabel final. Łączenie odbywa się po
+rzeczywistych znacznikach czasu, bez średnich. Brakujące godziny i ujemne pomiary
+m³/kWh pozostają nieznane. Duplikaty i brak strefy czasu powodują czytelny błąd.
 
-Energia: wyłącznie energia czynna pobrana, kompletność 100%; wartości są już
-godzinowymi kWh, nie są różnicowane. W godzinie zachowany jest pierwszy poprawny
-odczyt; nie sumujemy zdublowanych raportów. Niejednoznaczne daty DST pozostają
-nieznane. Dane nie są interpolowane ani uzupełniane zerem.
+Historia 7/14/30 dni jest liczona wstecz od ostatniej dostępnej godziny,
+w której są **jednocześnie poprawne pomiary m³ i kWh**. Późniejsze godziny
+z samym pompowaniem nie przesuwają końca historii. W plikach z 28.10.2026:
 
-Historia 7/14/30 dni jest liczona wstecz od ostatniej dostępnej pełnej godziny
-wspólnego zakresu m³ i kWh. W aktualnych plikach:
+- PZ1: ostatnia wspólna godzina 30.09.2025 23:00 UTC+1, czyli **01.10.2025 00:00 Europe/Warsaw**;
+- PNB1: ostatnia wspólna godzina 28.09.2026 12:00 UTC+1, czyli **28.09.2026 13:00 Europe/Warsaw**.
 
-- PZ1: 30.12.2024 23:00 Europe/Warsaw;
-- PNB1: 31.12.2024 22:00 Europe/Warsaw.
-
-Raport PZ1 sięga 2025 r., ale log pompowania kończy się w 2024 r.; brakującego
-pompowania nie dopisujemy. Kafle ostatniej godziny pokazują datę archiwum.
+Obie serie w kaflach ostatniej godziny dotyczą tego samego rzeczywistego czasu.
+Luki wewnątrz wybranego zakresu nadal pozostają nieznane; nie wybieramy 720
+rozproszonych kompletnych wierszy zamiast 30 kolejnych dni. Predykcja nie
+zastępuje pomiaru ani w historii, ani w kalkulatorze ustawionym na pomiary.
 
 ## Wagi modeli i przyszłość
 
@@ -58,16 +57,25 @@ Nie uruchamiamy treningu ani skryptów `optimized`. CatBoost ma 20 cech
 kalendarzowo-opadowych, LightGBM 11 cech, w tym pompowanie. Zachowany jest
 kalendarz UTC+1 oraz `min_periods=1` sum/maksimum opadów CatBoost z przygotowania
 final. Brakujący bieżący opad i lagi pozostają brakujące; nie podstawiamy zera.
-Modele energii dostają predykcję pompowania również w porównaniu historycznym;
+Nowe modele energii wymagają nazwy cechy `przepompowano_m3` (starsze modele
+Chorzowa/Rudy zachowują `przepompowano`). Modele energii dostają predykcję pompowania również w porównaniu historycznym;
 rzeczywiste kWh są osobną serią.
 
-Prognoza: 720 kolejnych godzin od jutrzejszej północy w Polsce. Opady z
+Prognoza obu obiektów obejmuje **30 dni (720 kolejnych godzin)** od jutrzejszej
+północy w Polsce, tak jak w pozostałych zakładkach. Przy uruchomieniu 28.10.2026
+jest to **29.10.2026 00:00–27.11.2026 23:00 Europe/Warsaw**. 29 października jest
+początkiem, a nie końcem prognozy. Zakres przesuwa się wraz z datą uruchomienia;
+nie cofamy aktualnej pogody do dat archiwalnych pomiarów.
+UI, zakresy dat kalkulatora i sumy obejmują pełne 30 dni. Opady z
 `load_weather_forecast`: EC46, stały scenariusz 0, bez średniej zespołu.
 Open-Meteo interpoluje natywny krok 6 h do odpowiedzi 1 h; aplikacja nie wygładza
 predykcji. Współrzędne 50.114718, 18.533368 pochodzą z istniejącej konfiguracji
 Rybnika w `src/weather_loader.py`. W repozytorium nie znaleziono osobnych punktów
 pogodowych dla PZ1 i PNB1, więc oba używają tego punktu i cache
 `ui/.runtime/rybnik-weather.json`.
+
+To dane godzinowe odpowiedzi API, nie natywna prognoza pogody w kroku 1 h.
+[Dokumentacja Open-Meteo EC46](https://open-meteo.com/en/docs/seasonal-forecast-api).
 
 W przyszłości pompowanie pochodzi wyłącznie z CatBoost, a energia z LightGBM
 zasilanego tym pompowaniem i pogodą. Pola pomiarów rzeczywistych są `null`.
