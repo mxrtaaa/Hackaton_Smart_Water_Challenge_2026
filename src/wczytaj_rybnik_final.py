@@ -22,35 +22,67 @@ POGODA = WEJSCIE / "suma_opadow.parquet"
 # Tryb "godzinowe" = gotowe m³ lub kWh za godzinę: bez różnicowania.
 # W logu bez nagłówków kolumna wartości nazywa się "Wartosc".
 # Jeżeli w logu występuje kilka nazw liczników, wpisujemy właściwą w "licznik_nazwa".
+
+columns = ["Licznik", "Data_czas", "Wartosc", "Sposob_pomiaru"]
+
+df_pz1_1 = pd.read_csv(ROOT / "data" / "raw" / "Rybnik" / "PZ1_2024.txt", sep='\t', header=None, names=columns)
+df_pz1_2 = pd.read_csv(WEJSCIE / "PZ1_ 2025.csv", sep=';', header=None, names=["Licznik", "Data_czas", "Wartosc"])
+df_pz1_3 = pd.read_csv(WEJSCIE / "PZ1_2026.csv", header=None, names=columns)
+df_pz1 = pd.concat([df_pz1_1, df_pz1_2, df_pz1_3], ignore_index=True)
+df_pz1.to_csv(WEJSCIE / "PZ1_all.csv")
+
+df_pnb1 = pd.read_csv(WEJSCIE / "PNB1.txt", header=None, names=columns, sep='\t')
+df_pnb1.to_csv()
+
+df_energia_pnb1_1 = pd.read_csv(ROOT / "data" / "raw" / "Rybnik" / "Rap_godzinowy_2024-01-01_2024-12-31_423662 - PNB1.csv", encoding="cp1250")
+df_energia_pnb1_2 = pd.read_csv(WEJSCIE / "Rap_godzinowy_2025-01-01_2025-12-31_423660 - PNB1.csv", encoding="cp1250")
+df_energia_pnb1_3 = pd.read_csv(WEJSCIE / "Rap_godzinowy_2026-01-01_2026-09-28_423667 - PNB1.csv", encoding="cp1250")
+
+
+df_energia_pnb1 = pd.concat([df_energia_pnb1_1, 
+                             df_energia_pnb1_2, 
+                             df_energia_pnb1_3], ignore_index=True)
+df_energia_pnb1.to_csv(WEJSCIE / "energia_PNB1_all.csv")
+
+
+df_energia_pz1_1 = pd.read_csv(ROOT / "data" / "raw" / "Rybnik" / "Rap_godzinowy_2023-10-01_2024-09-30_423634 - PZ1.csv", encoding="cp1250")
+df_energia_pz1_2 = pd.read_csv(WEJSCIE / "Rap_godzinowy_2024-09-28_2025-10-01_423628 - PZ1.csv", encoding="cp1250")
+df_energia_pz1 = pd.concat([df_energia_pz1_1,
+                             df_energia_pz1_2], ignore_index=True)
+df_energia_pz1.to_csv(WEJSCIE / "energia_PZ1_all.csv")
+
+
+
+
 STACJE = {
     "PZ1": {
-        "przeplyw_plik": WEJSCIE / "PZ1_2024.csv",
+        "przeplyw_plik": WEJSCIE / "PZ1_all.csv",
         "przeplyw_format": "log",       # "log" lub "raport"
         "przeplyw_tryb": "licznik",    # "licznik" lub "godzinowe"
         "przeplyw_kolumna": "Wartosc",
-        "licznik_nazwa": None,          # np. "Q1sr_PZ1.2"
-        "energia_plik": WEJSCIE / "Energia_PZ1_2024.csv",
+        "licznik_nazwa": 'Q1sr_PZ1.2',
+        "energia_plik": WEJSCIE / "energia_PZ1_all.csv",
         "energia_tryb": "godzinowe",
-        "energia_kolumna": None,       # nazwa kolumny kWh z raportu
+        "energia_kolumna": "Wartosc[kWh/kvar]",
     },
     "PNB1": {
-        "przeplyw_plik": WEJSCIE / "PNB1_2024.csv",
+        "przeplyw_plik": WEJSCIE / "PNB1.txt",
         "przeplyw_format": "log",
         "przeplyw_tryb": "licznik",
         "przeplyw_kolumna": "Wartosc",
-        "licznik_nazwa": None,
-        "energia_plik": WEJSCIE / "Energia_PNB1_2025_2026.csv",
+        "licznik_nazwa": "Q1sr_PN1",
+        "energia_plik": WEJSCIE / "energia_PNB1_all.csv",
         "energia_tryb": "godzinowe",
-        "energia_kolumna": None,
+        "energia_kolumna": "Wartosc[kWh/kvar]",
     },
 }
 
 # Daty potwierdzonych błędów pomiaru (jeśli występują w nowym pliku).
 # np "PZ1": [("2024-03-05 00:00", "2024-03-20 23:00")]
-WYKLUCZONE_OKRESY = {"PZ1": [], "PNB1": []}
+WYKLUCZONE_OKRESY = {"PZ1": ["2024-09-28 00:00", "2024-09-30 00:00"], "PNB1": []}
 
 STREFA = timezone(timedelta(hours=1))
-LOG_KOLUMNY = ["Data", "Godzina", "Licznik", "Wartosc", "Sposob_pomiaru"]
+LOG_KOLUMNY = ["Licznik", "Data_czas", "Wartosc", "Sposob_pomiaru"]
 
 # ====================== PRZETWARZANIE DANYCH =========================
 
@@ -83,7 +115,7 @@ def wczytaj(plik, format_pliku="raport"):
                 f"{plik.name}: log powinien mieć 5 kolumn; ma {df.shape[1]}. "
                 "Sprawdź separator i ustaw przeplyw_format='raport', jeśli jest nagłówek."
             )
-        df.columns = LOG_KOLUMNY
+        # df.columns = LOG_KOLUMNY
         # Niektóre pliki mają mimo wszystko w pierwszym wierszu nagłówki.
         df = df.loc[~df["Data"].astype(str).str.strip().eq("Data")].copy()
 
@@ -96,6 +128,8 @@ def ustaw_czas(df):
         daty = pd.to_datetime(df["Data_czas"], dayfirst=True, errors="coerce")
     elif "DataCzas" in df.columns:
         daty = pd.to_datetime(df["DataCzas"], dayfirst=True, errors="coerce")
+    elif "Data i godzina" in df.columns:
+            daty = pd.to_datetime(df["DataCzas"], dayfirst=True, errors="coerce")
     elif {"Data", "Godzina"}.issubset(df.columns):
         daty = pd.to_datetime(
             df["Data"].astype(str) + " " + df["Godzina"].astype(str),

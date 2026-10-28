@@ -35,40 +35,42 @@ def fix_tz_local(df, time_col="Data_czas"):
 
 def przygotuj_dane_przepompowanie():
     PROJECT_ROOT = get_project_root()
-    DATA_PATH = PROJECT_ROOT / "data" / "processed" / "Rybnik"
+    DATA_PATH = PROJECT_ROOT / "data" / "processed" / "final"
 
-    df_r_pz1 = pd.read_parquet(DATA_PATH / "pz1-2024.parquet")
-    df_r_pnb1 = pd.read_parquet(DATA_PATH / "pnb1-2024.parquet")
-    df_r_opady = pd.read_parquet(DATA_PATH / "suma_opadow.parquet")
+    df_r_pz1 = pd.read_parquet(DATA_PATH / "godzinowe-pz1-final.parquet")
+    df_r_pnb1 = pd.read_parquet(DATA_PATH / "godzinowe-pnb1-final.parquet")
+    #df_r_opady = pd.read_parquet(DATA_PATH / "suma_opadow.parquet")
 
     # 1. Strefa czasowa i czyszczenie
     wyniki = []
     for df in [df_r_pz1,df_r_pnb1]:
-        df = fix_tz_local(df)
-        df = df.rename(columns={"Wartosc": "ilosc"})
+        #df = fix_tz_local(df)
+        #df = df.rename(columns={"Wartosc": "ilosc"})
 
         # ODCINAMY AWARIĘ LICZNIKA (bierzemy dane dopiero od poprawnego momentu):
-        df = df.loc["2024-03-19 13:00:00":].copy()
+        #df = df.loc["2024-03-19 13:00:00":].copy()
 
 
-        df["ilosc"] = pd.to_numeric(
+        '''df["ilosc"] = pd.to_numeric(
             df["ilosc"].astype(str).str.replace(",", ".", regex=False),
             errors="coerce",
         )
-        df = df[df["ilosc"].notna()].sort_index()
+        df = df[df["ilosc"].notna()].sort_index()'''
 
         # 2. Strefa czasowa i agregacja opadów
-        df_r_opady = fix_tz_local(df_r_opady)
-        df_r_opady = df_r_opady.groupby(level=0).agg({"suma_opadu_mm": "sum"})
+        '''df_r_opady = fix_tz_local(df_r_opady)
+        df_r_opady = df_r_opady.groupby(level=0).agg({"suma_opadu_mm": "sum"})'''
 
         # 3. Godzinowy przyrost przepływu z licznika narastającego
-        hourly = df["ilosc"].resample("1h").last()
+        '''hourly = df["ilosc"].resample("1h").last()
         df_1h = pd.DataFrame({"przepompowano": hourly.diff()})
-        df_1h.loc[df_1h["przepompowano"] < 0, "przepompowano"] = np.nan
+        df_1h.loc[df_1h["przepompowano"] < 0, "przepompowano"] = np.nan'''
 
         # 4. Złączenie i cechy
-        df_lgbm = df_1h.join(df_r_opady[["suma_opadu_mm"]], how="left")
-        df_lgbm["suma_opadu_mm"] = df_lgbm["suma_opadu_mm"].fillna(0.0)
+        df_lgbm = df.drop(columns=['energia_kwh'])
+        df_lgbm = df.dropna()
+
+        df_lgbm["opad_mm"] = df_lgbm["opad_mm"].fillna(0.0)
 
         # Kalendarz
         df_lgbm["hour"] = df_lgbm.index.hour
@@ -83,7 +85,7 @@ def przygotuj_dane_przepompowanie():
         df_lgbm["month_cos"] = np.cos(2 * np.pi * (df_lgbm.index.month - 1) / 12)
 
         # Cechy opadów
-        r = df_lgbm["suma_opadu_mm"]
+        r = df_lgbm["opad_mm"]
         df_lgbm["opad_0h"] = r
         df_lgbm["opad_lag_1h"] = r.shift(1)
         df_lgbm["opad_max6h"] = r.rolling(6, min_periods=1).max()
@@ -110,9 +112,9 @@ def przygotuj_dane_przepompowanie():
         ]
 
         # Usunięcie wierszy z brakami
-        mask = df_lgbm["przepompowano"].notna() & df_lgbm[features].notna().all(axis=1)
+        mask = df_lgbm["przepompowano_m3"].notna() & df_lgbm[features].notna().all(axis=1)
         X = df_lgbm.loc[mask, features].copy()
-        y = df_lgbm.loc[mask, "przepompowano"].copy()
+        y = df_lgbm.loc[mask, "przepompowano_m3"].copy()
         wyniki.append((X,y))
 
     X_pz1 = wyniki[0][0]
