@@ -27,7 +27,7 @@ y_test = y.iloc[train_end:]
 
 
 
-best_params_median = {'learning_rate': 0.0282913085556902, 'depth': 7, 'l2_leaf_reg': 5.707603051834794, 'random_strength': 0.07334046663692162}
+best_params_median = {'learning_rate': 0.04203513948641982, 'depth': 6, 'l2_leaf_reg': 19.838135683506707, 'random_strength': 1.7287450778554834}
 # CATBOOST
 from catboost import CatBoostRegressor
 
@@ -51,12 +51,12 @@ print(f"\nOstateczne MAE na zbiorze TESTOWYM: {final_mae:.4f}")
 
 
 
-best_params_q97 = {'learning_rate': 0.05883790128236064, 'depth': 5, 'l2_leaf_reg': 19.631654919370728, 'random_strength': 0.8082472986982736}
+best_params_q97 = {'learning_rate': 0.013079619314708114, 'depth': 6, 'l2_leaf_reg': 11.689680625188423, 'random_strength': 0.48731610238448314}
 
 final_cb_q97 = CatBoostRegressor(
     **best_params_q97,
     loss_function="Quantile:alpha=0.97",
-    iterations=290,
+    iterations=240,
     task_type="CPU",
     thread_count=-1,
     random_seed=42,
@@ -74,5 +74,5 @@ print(f"\nFinalne Coverage na zbiorze testowym: {test_coverage * 100:.2f}% (cel:
 
 # ZAPIS MODELOW DO PLIKOW
 
-final_cb_median.save_model("rybnik_przepompowanie_pz1_median.cbm")
-final_cb_q97.save_model("rybnik_przepompowanie_pz1_q97.cbm")
+final_cb_median.save_model("rybnik_przepompowanie_pnb1_median.cbm")
+final_cb_q97.save_model("rybnik_przepompowanie_pnb1_q97.cbm")
