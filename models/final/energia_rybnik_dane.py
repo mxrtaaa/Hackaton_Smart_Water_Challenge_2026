@@ -45,13 +45,11 @@ def fix_tz_local(df, time_col="Data_czas"):
 
 def przygotuj_dane_energia():
     PROJECT_ROOT = get_project_root()
-    DATA_PATH = PROJECT_ROOT / "data" / "processed" / "Rybnik"
+    DATA_PATH = PROJECT_ROOT / "data" / "processed" / "final"
 
     # WCZYTANIE DANYCH
     df_ch_energia_pz1 = pd.read_parquet(DATA_PATH / "godzinowe-pz1-final.parquet")
     df_ch_energia_pnb1 = pd.read_parquet(DATA_PATH / "godzinowe-pnb1-final.parquet")
-
-    df_ch_opady = pd.read_parquet(DATA_PATH / "suma_opadow.parquet")
     
     wyniki = []
     for df in [df_ch_energia_pz1, df_ch_energia_pnb1]: 
@@ -90,7 +88,7 @@ def przygotuj_dane_energia():
         )'''
 
         # ŁĄCZENIE
-        df_lgbm = df["energia_kwh"].join(df["opad_mm"], how="left")
+        df_lgbm = df.copy()
         df_lgbm["opad_mm"] = df_lgbm["opad_mm"].fillna(0.0)
 
         # CECHY KALENDARZOWE
@@ -131,7 +129,7 @@ def przygotuj_dane_energia():
 
         # HISTORIA ZUŻYCIA ENERGII
 
-        energia = df_lgbm["zuzycie_energii"]
+        energia = df_lgbm["energia_kwh"]
 
         for k in [1, 3, 6, 24, 168]:
             df_lgbm[f"energia_lag_{k}h"] = energia.shift(k)
@@ -159,11 +157,12 @@ def przygotuj_dane_energia():
             "energia_lag_6h", "energia_lag_24h",
             "energia_lag_168h",
 
-            "energia_mean_6h", "energia_mean_24h"
+            "energia_mean_6h", "energia_mean_24h",
+            "przepompowano_m3"
         ]
 
         X = df_lgbm[features].copy()
-        y = df_lgbm["zuzycie_energii"].copy()
+        y = df_lgbm["energia_kwh"].copy()
 
         # Usuwamy tylko godziny z brakującym pomiarem celu.
         # Luki pozostają zachowane podczas liczenia lagów.

@@ -44,13 +44,13 @@ X_test = X.iloc[train_end:]
 y_train = y.iloc[:train_end]
 y_test = y.iloc[train_end:]
 
-best_params_l1 = {'learning_rate': 0.024730501628685782, 'num_leaves': 38, 'min_child_samples': 39, 'subsample': 0.773928709533859, 'colsample_bytree': 0.6734955534489407, 'reg_alpha': 0.045016051434058214, 'reg_lambda': 0.45914518211663063}
+best_params_l1 = {'learning_rate': 0.04423312268434832, 'num_leaves': 34, 'min_child_samples': 20, 'subsample': 0.8593599200628759, 'colsample_bytree': 0.8911099554792636, 'reg_alpha': 0.146149604703769, 'reg_lambda': 0.019287727691994907}
 
 # 2. Finalny trening na sztywnej liczbie drzew
 final_lgbm_l1 = LGBMRegressor(
     objective="l1",
     **best_params_l1,
-    n_estimators=120,   # dokładnie tyle, ile dało minimum błędu
+    n_estimators=150,   # dokładnie tyle, ile dało minimum błędu
     random_state=42,
     n_jobs=-1,
     verbosity=-1
@@ -63,13 +63,13 @@ final_mae = np.mean(np.abs(y_test - y_pred_test))
 print(f"\nOstateczne MAE na zbiorze TESTOWYM: {final_mae:.4f}")
 
 
-best_params_q97 = {'learning_rate': 0.015904375506537023, 'num_leaves': 24, 'min_child_samples': 32, 'subsample': 0.7575718870987741, 'colsample_bytree': 0.8675534187508811, 'reg_alpha': 0.04298204557648848, 'reg_lambda': 0.0032503506459809627}
+best_params_q97 = {'learning_rate': 0.039644399802937644, 'num_leaves': 28, 'min_child_samples': 22, 'subsample': 0.8702389941138186, 'colsample_bytree': 0.8738485992819316, 'reg_alpha': 0.0048698878320646045, 'reg_lambda': 5.43451117378569}
 
 final_lgbm_q97 = LGBMRegressor(
     objective="quantile",
     alpha=0.97,
     **best_params_q97,
-    n_estimators=230,
+    n_estimators=60,
     random_state=42,
     n_jobs=-1,
     verbosity=-1
