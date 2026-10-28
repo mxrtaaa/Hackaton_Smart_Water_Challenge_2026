@@ -26,6 +26,8 @@ from business_metrics import (
     summarize_rain_events,
     classify_weather_periods,
     calculate_dry_baseline,
+    calculate_calendar_baseline,
+    calculate_anomaly_cost,
 
 )
 
@@ -225,6 +227,22 @@ def load_station(station_id, signature):
         detail[column] = infer(model, energy if column.startswith("energia") else flow, names)
         models.append({"output": column, "path": str(path.relative_to(ROOT)), "features": names})
 
+    # Cost references are fitted on the full archive, before selecting 30 days.
+    calendar = calculate_calendar_baseline(frame)
+    detail["baseline_kalendarzowy_m3"] = calendar["bazowe_m3"]
+    detail["baseline_kalendarzowy_kwh"] = calendar["bazowe_kwh"]
+    if station_id == "chorzow":
+        # The cost reference must not absorb the observed pumping anomaly.
+        # Keep the existing conditional historical energy chart unchanged.
+        weather_inputs = frame.copy()
+        weather_inputs["przepompowano_m3"] = detail["prognoza"]
+        weather_features = energy_features(weather_inputs, station_id)
+        _, model, names, _ = next(m for m in exported_models(station_id, signature)
+                                  if m[0] == "energia_prognoza")
+        weather_energy = infer(model, weather_features, names)
+    else:
+        weather_energy = detail["energia_prognoza"]
+    detail["baseline_pogodowy_kwh"] = weather_energy.where(weather_energy >= 0)
     detail["anomaly"] = detail["przepompowano_m3"].notna() & detail["q97"].notna() & (detail["przepompowano_m3"] > detail["q97"])
 
     return detail, models
@@ -292,7 +310,7 @@ def summarize(detail, price):
 
     }
 
-def anomalies_for(detail):
+def anomalies_for(detail, price=CENA_ENERGII):
 
     groups = []
 
@@ -310,10 +328,22 @@ def anomalies_for(detail):
     for group in reversed(groups):
 
         deviation = [100 * (r["przepompowano_m3"] / r["prognoza"] - 1) for _, r in group if r["prognoza"] > 0]
+        event = detail.loc[[time for time, _ in group]].copy()
+        weather_cost = calculate_anomaly_cost(event.assign(
+            bazowe_m3=event["prognoza"].where(event["prognoza"] >= 0),
+            bazowe_kwh=event["baseline_pogodowy_kwh"],
+        ), price)
+        calendar_cost = calculate_anomaly_cost(event.assign(
+            bazowe_m3=event["baseline_kalendarzowy_m3"],
+            bazowe_kwh=event["baseline_kalendarzowy_kwh"],
+        ), price)
         result.append({"id": group[0][0].isoformat(), "time": group[0][0], "end": group[-1][0], "title": "Przekroczenie Q97",
 
             "deviation": max(deviation) if deviation else None,
             "ponad_q97": sum(r["przepompowano_m3"] - r["q97"] for _, r in group),
+            "koszt_pogodowy_zl": weather_cost["koszt_zl"],
+            "koszt_kalendarzowy_zl": calendar_cost["koszt_zl"],
+            "wycena_pogodowa": weather_cost, "wycena_kalendarzowa": calendar_cost,
             "description": "Przekroczenie kwantyla z wyeksportowanego modelu CatBoost. Historyczne porównanie z pomiarem nie potwierdza awarii ani możliwości uzyskania oszczędności."})
 
     return clean(result)
@@ -444,6 +474,12 @@ def dashboard(station_id):
         "stations": [{k: s[k] for k in ("id", "name", "code")} for s in STATIONS],
         "pricePerKwh": CENA_ENERGII, "history": records(visible, "time"), "forecast": [],
         "anomalies": anomalies_for(visible),
+        "anomalyCostMethod": {
+            "pricePerKwh": CENA_ENERGII,
+            "weatherBaseline": "Model energii z opadami, kalendarzem i predykcją pompowania; bez pomiaru pompowania jako wejścia.",
+            "calendarBaseline": "Mediany wszystkich kompletnych historycznych godzin: miesiąc+godzina+weekend, następnie fallback z business_metrics.py; minimum 5 próbek, bez opadów.",
+            "formula": "max(0, suma(pomiar kWh - baseline kWh)) × cena; tylko godziny danego przekroczenia Q97, wszystkie wymagane do wyceny.",
+        },
         "businessByRange": {str(days): summarize(window_detail(detail, days), CENA_ENERGII) for days in (7, 30)},
         "provenance": {"report": str(asset_paths(station)[0].relative_to(ROOT)), "models": models,
             "businessModule": "src/business_metrics.py", "forecastUnavailable": "Brak przyszłych cech pogodowych; modele nie wyznaczają samodzielnie prognozy na 30 dni.",

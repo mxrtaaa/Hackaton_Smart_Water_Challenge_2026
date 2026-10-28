@@ -814,6 +814,19 @@ tr:last-child td {
     color:#7d97a4
 }
 
+.anomaly-table th small,
+.anomaly-table td:nth-child(n+4) small {
+    display:block;
+    margin-top:5px;
+    color:#7d97a4;
+    font-size:10px;
+    font-weight:400;
+}
+
+.anomaly-table td:nth-child(n+4) {
+    white-space:nowrap;
+}
+
 .anomaly-table tr.selected {
     background:#102a34
 }

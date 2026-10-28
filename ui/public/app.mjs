@@ -719,6 +719,23 @@ function renderCharts() {
 
 function renderAnomalies() {
   $('#anomaly-count').textContent = data.anomalies.length;
+  const costCell = (value, valuation) => {
+    const coverage = valuation
+      ? `${valuation.godziny_wycenione}/${valuation.godziny} godzin z wyceną`
+      : 'Brak danych wyceny z backendu Python';
+    return `<td title="${esc(coverage)}">${Number.isFinite(value)
+      ? `${num(value, 2)} zł`
+      : 'brak wyceny'}<small>${esc(coverage)}</small></td>`;
+  };
+  $('#anomaly-cost-note').textContent = data.anomalyCostMethod
+    ? `Wycena: ${num(data.anomalyCostMethod.pricePerKwh, 2)} zł/kWh z business_metrics.py. `
+      + 'Pogoda: model energii z opadami i przewidywanym pompowaniem. '
+      + 'Bez pogody: mediany wszystkich kompletnych godzin według miesiąca, godziny i weekendu '
+      + '(minimum 5 próbek; fallback jak w business_metrics.py). '
+      + 'Koszt = dodatnia część sumy różnic kWh × cena, tylko za godziny przekroczenia Q97. '
+      + 'Kolumny pokazują alternatywne wyceny tej samej nadwyżki. '
+      + 'Brak wymaganej godziny oznacza brak pełnej wyceny. To szacunek nadwyżki kosztu energii.'
+    : 'Koszty wymagają wyceny przez backend Python; nie są zastępowane zerami.';
 
   $('#anomalies').innerHTML = data.anomalies
     .map(a => `
@@ -733,10 +750,12 @@ function renderAnomalies() {
             : num(a.deviation, 1) + '%'}
         </td>
         <td>${num(a.ponad_q97, 1)}</td>
+        ${costCell(a.koszt_pogodowy_zl, a.wycena_pogodowa)}
+        ${costCell(a.koszt_kalendarzowy_zl, a.wycena_kalendarzowa)}
       </tr>
     `)
     .join('') ||
-    '<tr><td colspan="3" class="empty">Brak zarejestrowanych przekroczeń Q97.</td></tr>';
+    '<tr><td colspan="5" class="empty">Brak zarejestrowanych przekroczeń Q97.</td></tr>';
 }
 
 function sourcePrices() {
