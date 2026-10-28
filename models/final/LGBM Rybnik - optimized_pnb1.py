@@ -7,11 +7,7 @@ from lightgbm import LGBMRegressor
 from energia_rybnik_dane import przygotuj_dane_energia
 
 _, _, X_energia, Y_energia = przygotuj_dane_energia()
-models_path = Path.cwd().parents[0]
-sys.path.append(str(models_path / "Predykcja przepompowanych ścieków"))
-from przepompowanie_rybnik_dane import przygotuj_dane_przepompowanie
 
-_, _, X_przeplyw , Y_przeplyw = przygotuj_dane_przepompowanie()
 
 features = [
     # Kalendarz
@@ -20,19 +16,18 @@ features = [
     # Opady
     "opad_1h", "opad_6h", "opad_12h",
     "opad_24h", "opad_48h", "opad_168h",
-    "h_od_deszczu",
+    "h_od_deszczu", "przepompowano_m3"
 ]
 
-df_all = X_energia[features].join([Y_przeplyw, Y_energia], how="inner")
+df_all = X_energia[features].join([Y_energia], how="inner")
 
 # Odrzucenie ewentualnych wierszy z brakami po złączeniu
 df_all = df_all.dropna()
 
 # Rozdzielenie na X i y z gwarancją zgodności wiersz po wierszu
-target_col = Y_energia.name  # np. 'zuzycie_energii'
+target_col = Y_energia.name
 X = df_all.drop(columns=[target_col])
 y = df_all[target_col]
-
 # Weryfikacja: teraz len(X) == len(y) bez wyjątku
 print(f"Liczba próbek po dopasowaniu: {len(X)}")
 
@@ -44,13 +39,13 @@ X_test = X.iloc[train_end:]
 y_train = y.iloc[:train_end]
 y_test = y.iloc[train_end:]
 
-best_params_l1 = {'learning_rate': 0.04423312268434832, 'num_leaves': 34, 'min_child_samples': 20, 'subsample': 0.8593599200628759, 'colsample_bytree': 0.8911099554792636, 'reg_alpha': 0.146149604703769, 'reg_lambda': 0.019287727691994907}
+best_params_l1 = {'learning_rate': 0.07207573117835031, 'num_leaves': 11, 'min_child_samples': 70, 'subsample': 0.7588251646110259, 'colsample_bytree': 0.6923942087527959, 'reg_alpha': 0.19071496313643255, 'reg_lambda': 0.004018427569876081}
 
 # 2. Finalny trening na sztywnej liczbie drzew
 final_lgbm_l1 = LGBMRegressor(
     objective="l1",
     **best_params_l1,
-    n_estimators=150,   # dokładnie tyle, ile dało minimum błędu
+    n_estimators=70,   # dokładnie tyle, ile dało minimum błędu
     random_state=42,
     n_jobs=-1,
     verbosity=-1
@@ -63,7 +58,7 @@ final_mae = np.mean(np.abs(y_test - y_pred_test))
 print(f"\nOstateczne MAE na zbiorze TESTOWYM: {final_mae:.4f}")
 
 
-best_params_q97 = {'learning_rate': 0.039644399802937644, 'num_leaves': 28, 'min_child_samples': 22, 'subsample': 0.8702389941138186, 'colsample_bytree': 0.8738485992819316, 'reg_alpha': 0.0048698878320646045, 'reg_lambda': 5.43451117378569}
+best_params_q97 = {'learning_rate': 0.03106244619426004, 'num_leaves': 24, 'min_child_samples': 60, 'subsample': 0.872122179916127, 'colsample_bytree': 0.9075354551702268, 'reg_alpha': 0.0022353846591735443, 'reg_lambda': 0.07790571294848231}
 
 final_lgbm_q97 = LGBMRegressor(
     objective="quantile",
