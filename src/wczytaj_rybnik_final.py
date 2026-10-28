@@ -16,7 +16,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 WEJSCIE = ROOT / "data" / "final"
 WYJSCIE = ROOT / "data" / "processed" / "Rybnik"
-POGODA = WEJSCIE / "suma_opadow.parquet"
+POGODA = WYJSCIE / "suma_opadow.parquet"
 
 # Tryb "licznik" = stan narastający: ostatni odczyt w godzinie, potem różnica.
 # Tryb "godzinowe" = gotowe m³ lub kWh za godzinę: bez różnicowania.
@@ -27,31 +27,39 @@ columns = ["Licznik", "Data_czas", "Wartosc", "Sposob_pomiaru"]
 
 df_pz1_1 = pd.read_csv(ROOT / "data" / "raw" / "Rybnik" / "PZ1_2024.txt", sep='\t', header=None, names=columns)
 df_pz1_2 = pd.read_csv(WEJSCIE / "PZ1_ 2025.csv", sep=';', header=None, names=["Licznik", "Data_czas", "Wartosc"])
-df_pz1_3 = pd.read_csv(WEJSCIE / "PZ1_2026.csv", header=None, names=columns)
+df_pz1_3 = pd.read_csv(WEJSCIE / "PZ1_2026.csv", sep=';', header=None, names=columns)
 df_pz1 = pd.concat([df_pz1_1, df_pz1_2, df_pz1_3], ignore_index=True)
 df_pz1.to_csv(WEJSCIE / "PZ1_all.csv")
 
 df_pnb1 = pd.read_csv(WEJSCIE / "PNB1.txt", header=None, names=columns, sep='\t')
-df_pnb1.to_csv()
+df_pnb1.to_csv(WEJSCIE / "PNB1_all.csv")
 
-df_energia_pnb1_1 = pd.read_csv(ROOT / "data" / "raw" / "Rybnik" / "Rap_godzinowy_2024-01-01_2024-12-31_423662 - PNB1.csv", encoding="cp1250")
-df_energia_pnb1_2 = pd.read_csv(WEJSCIE / "Rap_godzinowy_2025-01-01_2025-12-31_423660 - PNB1.csv", encoding="cp1250")
-df_energia_pnb1_3 = pd.read_csv(WEJSCIE / "Rap_godzinowy_2026-01-01_2026-09-28_423667 - PNB1.csv", encoding="cp1250")
+df_energia_pnb1_1 = pd.read_csv(ROOT / "data" / "raw" / "Rybnik" / "Rap_godzinowy_2024-01-01_2024-12-31_423662 - PNB1.csv", encoding="cp1250", sep=';')
+df_energia_pnb1_2 = pd.read_csv(WEJSCIE / "Rap_godzinowy_2025-01-01_2025-12-31_423660 - PNB1.csv", sep=';', encoding="cp1250")
+df_energia_pnb1_3 = pd.read_csv(WEJSCIE / "Rap_godzinowy_2026-01-01_2026-09-28_423667 - PNB1.csv", sep=';', encoding="cp1250")
 
 
 df_energia_pnb1 = pd.concat([df_energia_pnb1_1, 
                              df_energia_pnb1_2, 
                              df_energia_pnb1_3], ignore_index=True)
-df_energia_pnb1.to_csv(WEJSCIE / "energia_PNB1_all.csv")
+df_energia_pnb1.to_csv(
+    WEJSCIE / "energia_PNB1_all.csv",
+    sep=";",
+    index=False,
+    encoding="utf-8-sig"
+)
 
 
-df_energia_pz1_1 = pd.read_csv(ROOT / "data" / "raw" / "Rybnik" / "Rap_godzinowy_2023-10-01_2024-09-30_423634 - PZ1.csv", encoding="cp1250")
-df_energia_pz1_2 = pd.read_csv(WEJSCIE / "Rap_godzinowy_2024-09-28_2025-10-01_423628 - PZ1.csv", encoding="cp1250")
+df_energia_pz1_1 = pd.read_csv(ROOT / "data" / "raw" / "Rybnik" / "Rap_godzinowy_2023-10-01_2024-09-30_423634 - PZ1.csv", sep=';', encoding="cp1250")
+df_energia_pz1_2 = pd.read_csv(WEJSCIE / "Rap_godzinowy_2024-09-28_2025-10-01_423628 - PZ1.csv", sep=';', encoding="cp1250")
 df_energia_pz1 = pd.concat([df_energia_pz1_1,
                              df_energia_pz1_2], ignore_index=True)
-df_energia_pz1.to_csv(WEJSCIE / "energia_PZ1_all.csv")
-
-
+df_energia_pz1.to_csv(
+    WEJSCIE / "energia_PZ1_all.csv",
+    sep=";",
+    index=False,
+    encoding="utf-8-sig"
+)
 
 
 STACJE = {
@@ -66,7 +74,7 @@ STACJE = {
         "energia_kolumna": "Wartosc[kWh/kvar]",
     },
     "PNB1": {
-        "przeplyw_plik": WEJSCIE / "PNB1.txt",
+        "przeplyw_plik": WEJSCIE / "PNB1_all.csv",
         "przeplyw_format": "log",
         "przeplyw_tryb": "licznik",
         "przeplyw_kolumna": "Wartosc",
@@ -79,12 +87,86 @@ STACJE = {
 
 # Daty potwierdzonych błędów pomiaru (jeśli występują w nowym pliku).
 # np "PZ1": [("2024-03-05 00:00", "2024-03-20 23:00")]
-WYKLUCZONE_OKRESY = {"PZ1": ["2024-09-28 00:00", "2024-09-30 00:00"], "PNB1": []}
+WYKLUCZONE_OKRESY = {"PZ1": [("2024-09-28 00:00", "2024-09-30 00:00"), ("2024-01-01", "2024-03-19 14:00")], "PNB1": []}
 
 STREFA = timezone(timedelta(hours=1))
 LOG_KOLUMNY = ["Licznik", "Data_czas", "Wartosc", "Sposob_pomiaru"]
 
 # ====================== PRZETWARZANIE DANYCH =========================
+
+
+LOG_KOLUMNY = [
+    "Licznik", "Data_czas", "Wartosc", "Sposob_pomiaru"
+]
+
+
+def wczytaj_log_surowy(plik):
+    # Rozpoznajemy separator na podstawie pierwszego wiersza.
+    with open(plik, encoding="utf-8-sig") as f:
+        pierwszy = f.readline()
+
+    separator = (
+        "\t" if "\t" in pierwszy else
+        ";" if ";" in pierwszy else
+        ","
+    )
+
+    df = pd.read_csv(
+        plik,
+        sep=separator,
+        header=None,
+        dtype=str,
+        encoding="utf-8-sig",
+        low_memory=False
+    )
+
+    if df.shape[1] not in (3, 4):
+        raise ValueError(
+            f"{plik.name}: znaleziono {df.shape[1]} kolumn "
+            "zamiast 3 lub 4."
+        )
+
+    if df.shape[1] == 3:
+        df["brakujaca_kolumna"] = pd.NA
+
+    df.columns = LOG_KOLUMNY
+
+    # Pomijamy nagłówek, jeśli występuje w pliku.
+    df = df.loc[
+        df["Licznik"].str.strip().ne("Licznik")
+    ].copy()
+
+    print(f"{plik.name}: {len(df)} wierszy")
+    return df
+
+
+# PRZEPŁYW PZ1 — 2024, 2025, 2026
+
+df_pz1 = pd.concat([
+    wczytaj_log_surowy(
+        ROOT / "data" / "raw" / "Rybnik" / "PZ1_2024.txt"
+    ),
+    wczytaj_log_surowy(WEJSCIE / "PZ1_ 2025.csv"),
+    wczytaj_log_surowy(WEJSCIE / "PZ1_2026.csv")
+], ignore_index=True)
+
+df_pz1.to_csv(
+    WEJSCIE / "PZ1_all.csv",
+    sep=";",
+    index=False,
+    header=False
+)
+
+# PRZEPŁYW PNB1
+
+df_pnb1 = wczytaj_log_surowy(WEJSCIE / "PNB1.txt")
+
+df_pnb1.to_csv(
+    WEJSCIE / "PNB1_all.csv",
+    sep=";",
+    index=False,
+    header=False
+)
 
 
 def wczytaj(plik, format_pliku="raport"):
@@ -110,54 +192,121 @@ def wczytaj(plik, format_pliku="raport"):
         raise ValueError(f"Nie udało się odczytać kodowania: {plik}")
 
     if format_pliku == "log":
-        if df.shape[1] != 5:
+        if df.shape[1] != 4:
             raise ValueError(
-                f"{plik.name}: log powinien mieć 5 kolumn; ma {df.shape[1]}. "
-                "Sprawdź separator i ustaw przeplyw_format='raport', jeśli jest nagłówek."
+                f"{plik.name}: oczekiwano 4 kolumn, "
+                f"otrzymano {df.shape[1]}"
             )
-        # df.columns = LOG_KOLUMNY
-        # Niektóre pliki mają mimo wszystko w pierwszym wierszu nagłówki.
-        df = df.loc[~df["Data"].astype(str).str.strip().eq("Data")].copy()
+
+        df.columns = LOG_KOLUMNY
+
+        df = df.loc[
+            df["Licznik"].astype(str).str.strip().ne("Licznik")
+        ].copy()
 
     return df
 
 
+
 def ustaw_czas(df):
-    """Polski czas lokalny -> stałe UTC+1; obie problematyczne godziny DST -> NaT."""
+    """Różne formaty dat -> godziny w stałym UTC+1."""
+
     if "Data_czas" in df.columns:
-        daty = pd.to_datetime(df["Data_czas"], dayfirst=True, errors="coerce")
+        surowe_daty = df["Data_czas"]
+
     elif "DataCzas" in df.columns:
-        daty = pd.to_datetime(df["DataCzas"], dayfirst=True, errors="coerce")
+        surowe_daty = df["DataCzas"]
+
     elif "Data i godzina" in df.columns:
-            daty = pd.to_datetime(df["DataCzas"], dayfirst=True, errors="coerce")
+        surowe_daty = df["Data i godzina"]
+
     elif {"Data", "Godzina"}.issubset(df.columns):
-        daty = pd.to_datetime(
-            df["Data"].astype(str) + " " + df["Godzina"].astype(str),
-            dayfirst=True, errors="coerce",
-        )
-    elif {"Data", "Czas"}.issubset(df.columns):
-        daty = pd.to_datetime(
-            df["Data"].astype(str) + " " + df["Czas"].astype(str),
-            dayfirst=True, errors="coerce",
-        )
-    else:
-        raise ValueError(
-            "Nie rozpoznaję kolumn czasu. Dostępne kolumny: " + str(list(df.columns))
+        surowe_daty = (
+            df["Data"].astype(str) + " " +
+            df["Godzina"].astype(str)
         )
 
+    elif {"Data", "Czas"}.issubset(df.columns):
+        surowe_daty = (
+            df["Data"].astype(str) + " " +
+            df["Czas"].astype(str)
+        )
+
+    else:
+        raise ValueError(
+            f"Nie rozpoznaję kolumn czasu: {list(df.columns)}"
+        )
+
+    surowe_daty = surowe_daty.astype("string").str.strip()
+
+    print(
+        f"  Parsowanie {len(surowe_daty):,} dat...",
+        flush=True
+    )
+
+    # Najpierw szybko próbujemy format ISO,
+    # np. 2025-03-17 12:30:00
+    daty = pd.to_datetime(
+        surowe_daty,
+        format="ISO8601",
+        errors="coerce"
+    )
+
+    # Inny częsty format:
+    # 17.03.2025 12:30:00
+    brak = daty.isna() & surowe_daty.notna()
+
+    if brak.any():
+        daty.loc[brak] = pd.to_datetime(
+            surowe_daty.loc[brak],
+            format="%d.%m.%Y %H:%M:%S",
+            errors="coerce"
+        )
+
+    # Dopiero pozostałe, nietypowe daty
+    # próbujemy rozpoznawać automatycznie.
+    brak = daty.isna() & surowe_daty.notna()
+
+    if brak.any():
+        daty.loc[brak] = pd.to_datetime(
+            surowe_daty.loc[brak],
+            format="mixed",
+            dayfirst=True,
+            errors="coerce"
+        )
+
+    print(
+        "  Daty rozpoznane:",
+        int(daty.notna().sum()),
+        "/",
+        len(daty),
+        flush=True
+    )
+
+
+    print("  Liczba dat według lat PRZED zmianą strefy:")
+    print(daty.dt.year.value_counts(dropna=False).sort_index())
+
     indeks = pd.DatetimeIndex(daty)
+
     if indeks.tz is None:
         indeks = indeks.tz_localize(
-            "Europe/Warsaw", ambiguous="NaT", nonexistent="NaT"
+            "Europe/Warsaw",
+            ambiguous="NaT",
+            nonexistent="NaT"
         )
+
     indeks = indeks.tz_convert(STREFA)
-    print("  Odrzucone daty (błędne/DST):", int(indeks.isna().sum()))
+
+    print("  Odrzucone daty:", int(indeks.isna().sum()))
 
     df = df.copy()
     df.index = indeks
     df = df.loc[df.index.notna()].copy()
     df.index.name = "Data_czas"
+
     return df
+
 
 
 def liczby(df, kolumna):
@@ -207,9 +356,11 @@ def przeplyw(stacja, cfg):
             raise ValueError(f"{stacja}: brak licznika '{wybor}'; dostępne: {dostepne}")
         df = df.loc[nazwy.eq(wybor)].copy()
         if "Sposob_pomiaru" in df:
-            pomiary = df["Sposob_pomiaru"].astype(str).str.strip()
-            if pomiary.eq("Wartość z pomiaru").any():
-                df = df.loc[pomiary.eq("Wartość z pomiaru")].copy()
+            pomiary = df["Sposob_pomiaru"].astype("string").str.strip()
+            poprawne = pomiary.isna() | pomiary.eq("Wartość z pomiaru")
+            df = df.loc[poprawne].copy()
+            print("Rekordy po filtrze sposobu pomiaru:", len(df))
+
         print(f"  Wybrany licznik przepływu: {wybor}")
 
     df = ustaw_czas(df)
@@ -218,12 +369,6 @@ def przeplyw(stacja, cfg):
     seria = seria_godzinowa(
         df, cfg["przeplyw_kolumna"], cfg["przeplyw_tryb"], "przepompowano_m3"
     )
-
-    # Odrzucamy wadliwe okresy
-    for start, koniec in WYKLUCZONE_OKRESY[stacja]:
-        a = pd.Timestamp(start).tz_localize("Europe/Warsaw").tz_convert(STREFA)
-        b = pd.Timestamp(koniec).tz_localize("Europe/Warsaw").tz_convert(STREFA)
-        seria.loc[(seria.index >= a) & (seria.index <= b + pd.Timedelta(hours=1))] = float("nan")
 
     return seria
 
@@ -240,6 +385,7 @@ def energia(cfg):
             f"Dostępne kolumny: {list(df.columns)}"
         )
     df = ustaw_czas(df)
+
     return seria_godzinowa(df, cfg["energia_kolumna"], cfg["energia_tryb"], "energia_kwh")
 
 
@@ -253,6 +399,7 @@ if __name__ == "__main__":
     if POGODA.exists():
         pogoda = ustaw_czas(pd.read_parquet(POGODA))
         opady = seria_godzinowa(pogoda, "suma_opadu_mm", "godzinowe", "opad_mm")
+        
     else:
         print("UWAGA: brak lokalnych opadów; kolumna opad_mm pozostanie NaN.")
 
@@ -282,6 +429,36 @@ if __name__ == "__main__":
         if df["opad_mm"].isna().any():
             print("UWAGA: niekompletny opad. Uzupełnij pogodę PRZED treningiem modelu opadowego.")
 
+        for start, koniec in WYKLUCZONE_OKRESY[stacja]:
+            a = pd.Timestamp(start).tz_localize("Europe/Warsaw").tz_convert(STREFA)
+            b = pd.Timestamp(koniec).tz_localize("Europe/Warsaw").tz_convert(STREFA)
+
+            do_usuniecia = (df.index >= a) & (df.index <= b + pd.Timedelta(hours=1))
+            print(f"Usunięte godziny ({stacja}):", do_usuniecia.sum())
+            df = df.loc[~do_usuniecia].copy()
+        
         zapis = WYJSCIE / f"godzinowe-{stacja.lower()}-final.parquet"
         df.to_parquet(zapis)
         print("Zapisano:", zapis)
+
+
+    df = pd.read_parquet(
+        WYJSCIE / "godzinowe-pz1-final.parquet"
+    )
+
+    print("\n========== KONTROLA PZ1 ==========")
+
+    print("Zakres:", df.index.min(), "—", df.index.max())
+
+    print("\nLiczba poprawnych pomiarów według lat:")
+    print(
+        df.groupby(df.index.year)[
+            ["przepompowano_m3", "energia_kwh", "opad_mm"]
+        ].count()
+    )
+
+    print("\nOstatnie poprawne pomiary:")
+    for kolumna in ["przepompowano_m3", "energia_kwh", "opad_mm"]:
+        print(kolumna, ":", df[kolumna].last_valid_index())
+
+    print(df)

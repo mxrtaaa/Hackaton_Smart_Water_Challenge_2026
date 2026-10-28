@@ -313,6 +313,6 @@ if __name__ == "__main__":
         latitude="50.114718",
         longitude="18.533368",
         start_date="2024-01-01",
-        end_date="2026-10-24",
+        end_date="2026-10-28",
         hourly="precipitation"
     )

@@ -24,6 +24,20 @@ OBIEKTY = {
             ("LightGBM - energia", "ruda_energia.parquet", "energia_kwh", "lightgbm_energia"),
         ],
     ),
+    "RYBNIK - PNB1": (
+        "rybnik-PNB1",
+        [
+            ("CatBoost - przepływ", "godzinowe-pnb1-final.parquet", "przepompowano_m3", "catboost_przeplyw"),
+            ("LightGBM - energia", "godzinowe-pnb1-final.parquet", "energia_kwh", "lightgbm_energia"),
+        ],
+    ),
+    "RYBNIK - PZ1": (
+        "rybnik-PZ1",
+        [
+            ("CatBoost - przepływ", "godzinowe-pz1-final.parquet", "przepompowano_m3", "catboost_przeplyw"),
+            ("LightGBM - energia", "godzinowe-pz1-final.parquet", "energia_kwh", "lightgbm_energia"),
+        ],
+    )
 }
 
 for obiekt, (katalog, modele) in OBIEKTY.items():
