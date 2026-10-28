@@ -6,7 +6,7 @@ from lightgbm import LGBMRegressor
 
 from energia_rybnik_dane import przygotuj_dane as przygotuj_dane_energia
 
-X_energia, Y_energia = przygotuj_dane_energia()
+X_energia, Y_energia,_,_ = przygotuj_dane_energia()
 models_path = Path.cwd().parents[0]
 sys.path.append(str(models_path / "Predykcja przepompowanych ścieków"))
 from przepompowanie_rybnik_dane import przygotuj_dane_przepompowanie
