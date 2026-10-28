@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 from lightgbm import LGBMRegressor
 
-from energia_rybnik_dane import przygotuj_dane as przygotuj_dane_energia
+from energia_rybnik_dane import przygotuj_dane_energia
 
 X_energia, Y_energia,_,_ = przygotuj_dane_energia()
 models_path = Path.cwd().parents[0]
@@ -44,7 +44,7 @@ X_test = X.iloc[train_end:]
 y_train = y.iloc[:train_end]
 y_test = y.iloc[train_end:]
 
-best_params_l1 = {'learning_rate': 0.06359628170590019, 'num_leaves': 34, 'min_child_samples': 28, 'subsample': 0.8342191329162119, 'colsample_bytree': 0.9173441667077377, 'reg_alpha': 0.11165213389357362, 'reg_lambda': 0.11381890343543603}
+best_params_l1 = {'learning_rate': 0.05130883217351727, 'num_leaves': 40, 'min_child_samples': 21, 'subsample': 0.7336150276370695, 'colsample_bytree': 0.8357430448288825, 'reg_alpha': 0.014856073742694074, 'reg_lambda': 1.5602630464195817}
 
 # 2. Finalny trening na sztywnej liczbie drzew
 final_lgbm_l1 = LGBMRegressor(
@@ -63,13 +63,13 @@ final_mae = np.mean(np.abs(y_test - y_pred_test))
 print(f"\nOstateczne MAE na zbiorze TESTOWYM: {final_mae:.4f}")
 
 
-best_params_q97 = {'learning_rate': 0.012108365022107858, 'num_leaves': 14, 'min_child_samples': 35, 'subsample': 0.903337368450005, 'colsample_bytree': 0.89176728898391, 'reg_alpha': 0.043687763542647064, 'reg_lambda': 0.009645413025526581}
+best_params_q97 = {'learning_rate': 0.012833848333124615, 'num_leaves': 12, 'min_child_samples': 23, 'subsample': 0.9442916635259564, 'colsample_bytree': 0.7282473358072009, 'reg_alpha': 0.35597877159976404, 'reg_lambda': 0.010277433508060672}
 
 final_lgbm_q97 = LGBMRegressor(
     objective="quantile",
-    alpha=0.993,
+    alpha=0.97,
     **best_params_q97,
-    n_estimators=300,
+    n_estimators=600,
     random_state=42,
     n_jobs=-1,
     verbosity=-1

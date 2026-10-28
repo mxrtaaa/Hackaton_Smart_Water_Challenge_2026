@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 from lightgbm import LGBMRegressor
 
-from energia_rybnik_dane import przygotuj_dane as przygotuj_dane_energia
+from energia_rybnik_dane import przygotuj_dane_energia
 
 _, _, X_energia, Y_energia = przygotuj_dane_energia()
 models_path = Path.cwd().parents[0]
@@ -44,7 +44,7 @@ X_test = X.iloc[train_end:]
 y_train = y.iloc[:train_end]
 y_test = y.iloc[train_end:]
 
-best_params_l1 = {'learning_rate': 0.06359628170590019, 'num_leaves': 34, 'min_child_samples': 28, 'subsample': 0.8342191329162119, 'colsample_bytree': 0.9173441667077377, 'reg_alpha': 0.11165213389357362, 'reg_lambda': 0.11381890343543603}
+best_params_l1 = {'learning_rate': 0.024730501628685782, 'num_leaves': 38, 'min_child_samples': 39, 'subsample': 0.773928709533859, 'colsample_bytree': 0.6734955534489407, 'reg_alpha': 0.045016051434058214, 'reg_lambda': 0.45914518211663063}
 
 # 2. Finalny trening na sztywnej liczbie drzew
 final_lgbm_l1 = LGBMRegressor(
@@ -63,13 +63,13 @@ final_mae = np.mean(np.abs(y_test - y_pred_test))
 print(f"\nOstateczne MAE na zbiorze TESTOWYM: {final_mae:.4f}")
 
 
-best_params_q97 = {'learning_rate': 0.012108365022107858, 'num_leaves': 14, 'min_child_samples': 35, 'subsample': 0.903337368450005, 'colsample_bytree': 0.89176728898391, 'reg_alpha': 0.043687763542647064, 'reg_lambda': 0.009645413025526581}
+best_params_q97 = {'learning_rate': 0.015904375506537023, 'num_leaves': 24, 'min_child_samples': 32, 'subsample': 0.7575718870987741, 'colsample_bytree': 0.8675534187508811, 'reg_alpha': 0.04298204557648848, 'reg_lambda': 0.0032503506459809627}
 
 final_lgbm_q97 = LGBMRegressor(
     objective="quantile",
-    alpha=0.993,
+    alpha=0.97,
     **best_params_q97,
-    n_estimators=300,
+    n_estimators=230,
     random_state=42,
     n_jobs=-1,
     verbosity=-1
@@ -82,5 +82,5 @@ test_coverage = np.mean(y_test <= q97_preds)
 print(f"\nFinalne Coverage na zbiorze testowym: {test_coverage * 100:.2f}% (cel: 97.00%)")
 
 
-final_lgbm_l1.booster_.save_model("rybnik_energia_pz1_median.txt")
-final_lgbm_q97.booster_.save_model("rybnik_energia_pz1_q97.txt")
+final_lgbm_l1.booster_.save_model("rybnik_energia_pnb1_median.txt")
+final_lgbm_q97.booster_.save_model("rybnik_energia_pnb1_q97.txt")
