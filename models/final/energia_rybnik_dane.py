@@ -43,129 +43,140 @@ def fix_tz_local(df, time_col="Data_czas"):
     return res
 
 
-def przygotuj_dane_energia_pz1():
+def przygotuj_dane_energia():
     PROJECT_ROOT = get_project_root()
     DATA_PATH = PROJECT_ROOT / "data" / "processed" / "Rybnik"
 
     # WCZYTANIE DANYCH
-    df_ch_energia = pd.read_parquet(DATA_PATH / "raport-pz1.parquet")
+    df_ch_energia_pz1 = pd.read_parquet(DATA_PATH / "raport-pz1.parquet")
+    df_ch_energia_pnb1 = pd.read_parquet(DATA_PATH / "raport-pnb1.parquet")
+
     df_ch_opady = pd.read_parquet(DATA_PATH / "suma_opadow.parquet")
+    
+    wyniki = []
+    for df in [df_ch_energia_pz1, df_ch_energia_pnb1]: 
+        # ENERGIA
+        df_energia = fix_tz_local(df)
 
-    # ENERGIA
-    df_energia = fix_tz_local(df_ch_energia)
-
-    df_energia["Wartosc_kWh_kvar"] = pd.to_numeric(
-        df_energia["Wartosc_kWh_kvar"]
-        .astype(str)
-        .str.replace(",", ".", regex=False),
-        errors="coerce"
-    )
-
-    df_1h = (
-        df_energia["Wartosc_kWh_kvar"]
-        .resample("1h")
-        .sum()
-        .to_frame(name="zuzycie_energii")
-    )
-
-    # OPADY
-    df_opady = fix_tz_local(df_ch_opady)
-
-    df_opady["suma_opadu_mm"] = pd.to_numeric(
-        df_opady["suma_opadu_mm"]
-        .astype(str)
-        .str.replace(",", ".", regex=False),
-        errors="coerce"
-    )
-
-    opady_h = (
-        df_opady["suma_opadu_mm"]
-        .groupby(level=0).sum(min_count=1)
-        .resample("1h").sum(min_count=1)
-        .rename("suma_opadu_mm")
-    )
-
-    # ŁĄCZENIE
-    df_lgbm = df_1h.join(opady_h, how="left")
-    df_lgbm["suma_opadu_mm"] = df_lgbm["suma_opadu_mm"].fillna(0.0)
-
-    # CECHY KALENDARZOWE
-    df_lgbm["hour"] = df_lgbm.index.hour
-    df_lgbm["dayofweek"] = df_lgbm.index.day_of_week
-    df_lgbm["month"] = df_lgbm.index.month
-    df_lgbm["weekend"] = (df_lgbm.index.day_of_week >= 5).astype(int)
-
-    # CECHY CYKLICZNE (naprawione mnożenie 2 * np.pi)
-    df_lgbm["hour_sin"] = np.sin(2 * np.pi * df_lgbm.index.hour / 24)
-    df_lgbm["hour_cos"] = np.cos(2 * np.pi * df_lgbm.index.hour / 24)
-    df_lgbm["month_sin"] = np.sin(2 * np.pi * (df_lgbm.index.month - 1) / 12)
-    df_lgbm["month_cos"] = np.cos(2 * np.pi * (df_lgbm.index.month - 1) / 12)
-
-    # CECHY OPADOWE
-    r = df_lgbm["suma_opadu_mm"]
-
-    for k in [1, 2, 3, 6, 12, 24, 48, 72, 168]:
-        df_lgbm[f"opad_{k}h"] = (
-            r.shift(1).rolling(k).sum()
+        df_energia["Wartosc_kWh_kvar"] = pd.to_numeric(
+            df_energia["Wartosc_kWh_kvar"]
+            .astype(str)
+            .str.replace(",", ".", regex=False),
+            errors="coerce"
         )
 
-    df_lgbm["opad_max3h"] = (
-        r.shift(1).rolling(3).max()
-    )
+        df_1h = (
+            df_energia["Wartosc_kWh_kvar"]
+            .resample("1h")
+            .sum()
+            .to_frame(name="zuzycie_energii")
+        )
 
-    last_rain = (
-        df_lgbm.index.to_series()
-        .where(r.shift(1) > 0.1)
-        .ffill()
-    )
+        # OPADY
+        df_opady = fix_tz_local(df_ch_opady)
 
-    df_lgbm["h_od_deszczu"] = (
-            (
-                    df_lgbm.index.to_series() - last_rain
-            ).dt.total_seconds() / 3600
-    ).clip(upper=240)
+        df_opady["suma_opadu_mm"] = pd.to_numeric(
+            df_opady["suma_opadu_mm"]
+            .astype(str)
+            .str.replace(",", ".", regex=False),
+            errors="coerce"
+        )
 
-    # HISTORIA ZUŻYCIA ENERGII
+        opady_h = (
+            df_opady["suma_opadu_mm"]
+            .groupby(level=0).sum(min_count=1)
+            .resample("1h").sum(min_count=1)
+            .rename("suma_opadu_mm")
+        )
 
-    energia = df_lgbm["zuzycie_energii"]
+        # ŁĄCZENIE
+        df_lgbm = df_1h.join(opady_h, how="left")
+        df_lgbm["suma_opadu_mm"] = df_lgbm["suma_opadu_mm"].fillna(0.0)
 
-    for k in [1, 3, 6, 24, 168]:
-        df_lgbm[f"energia_lag_{k}h"] = energia.shift(k)
+        # CECHY KALENDARZOWE
+        df_lgbm["hour"] = df_lgbm.index.hour
+        df_lgbm["dayofweek"] = df_lgbm.index.day_of_week
+        df_lgbm["month"] = df_lgbm.index.month
+        df_lgbm["weekend"] = (df_lgbm.index.day_of_week >= 5).astype(int)
 
-    df_lgbm["energia_mean_6h"] = (
-        energia.shift(1).rolling(6).mean()
-    )
+        # CECHY CYKLICZNE (naprawione mnożenie 2 * np.pi)
+        df_lgbm["hour_sin"] = np.sin(2 * np.pi * df_lgbm.index.hour / 24)
+        df_lgbm["hour_cos"] = np.cos(2 * np.pi * df_lgbm.index.hour / 24)
+        df_lgbm["month_sin"] = np.sin(2 * np.pi * (df_lgbm.index.month - 1) / 12)
+        df_lgbm["month_cos"] = np.cos(2 * np.pi * (df_lgbm.index.month - 1) / 12)
 
-    df_lgbm["energia_mean_24h"] = (
-        energia.shift(1).rolling(24).mean()
-    )
+        # CECHY OPADOWE
+        r = df_lgbm["suma_opadu_mm"]
 
-    # WYBÓR CECH
+        for k in [1, 2, 3, 6, 12, 24, 48, 72, 168]:
+            df_lgbm[f"opad_{k}h"] = (
+                r.shift(1).rolling(k).sum()
+            )
 
-    features = [
-        "hour", "dayofweek", "month", "weekend",
+        df_lgbm["opad_max3h"] = (
+            r.shift(1).rolling(3).max()
+        )
 
-        "opad_1h", "opad_3h", "opad_6h",
-        "opad_12h", "opad_24h", "opad_48h",
-        "opad_72h", "opad_168h",
+        last_rain = (
+            df_lgbm.index.to_series()
+            .where(r.shift(1) > 0.1)
+            .ffill()
+        )
 
-        "opad_max3h", "h_od_deszczu",
+        df_lgbm["h_od_deszczu"] = (
+                (
+                        df_lgbm.index.to_series() - last_rain
+                ).dt.total_seconds() / 3600
+        ).clip(upper=240)
 
-        "energia_lag_1h", "energia_lag_3h",
-        "energia_lag_6h", "energia_lag_24h",
-        "energia_lag_168h",
+        # HISTORIA ZUŻYCIA ENERGII
 
-        "energia_mean_6h", "energia_mean_24h"
-    ]
+        energia = df_lgbm["zuzycie_energii"]
 
-    X = df_lgbm[features].copy()
-    y = df_lgbm["zuzycie_energii"].copy()
+        for k in [1, 3, 6, 24, 168]:
+            df_lgbm[f"energia_lag_{k}h"] = energia.shift(k)
 
-    # Usuwamy tylko godziny z brakującym pomiarem celu.
-    # Luki pozostają zachowane podczas liczenia lagów.
-    valid = y.notna()
+        df_lgbm["energia_mean_6h"] = (
+            energia.shift(1).rolling(6).mean()
+        )
 
-    X = X.loc[valid].copy()
-    y = y.loc[valid].copy()
+        df_lgbm["energia_mean_24h"] = (
+            energia.shift(1).rolling(24).mean()
+        )
 
-    return X, y
+        # WYBÓR CECH
+
+        features = [
+            "hour", "dayofweek", "month", "weekend",
+
+            "opad_1h", "opad_3h", "opad_6h",
+            "opad_12h", "opad_24h", "opad_48h",
+            "opad_72h", "opad_168h",
+
+            "opad_max3h", "h_od_deszczu",
+
+            "energia_lag_1h", "energia_lag_3h",
+            "energia_lag_6h", "energia_lag_24h",
+            "energia_lag_168h",
+
+            "energia_mean_6h", "energia_mean_24h"
+        ]
+
+        X = df_lgbm[features].copy()
+        y = df_lgbm["zuzycie_energii"].copy()
+
+        # Usuwamy tylko godziny z brakującym pomiarem celu.
+        # Luki pozostają zachowane podczas liczenia lagów.
+        valid = y.notna()
+
+        X = X.loc[valid].copy()
+        y = y.loc[valid].copy()
+
+        wyniki.append((X, y))
+
+    X_pz1 = wyniki[0][0]
+    y_pz1 = wyniki[0][1]
+    X_pnb1 = wyniki[1][0]
+    y_pnb1 = wyniki[1][1]
+
+    return X_pz1, y_pz1, X_pnb1, y_pnb1
