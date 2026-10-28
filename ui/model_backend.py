@@ -36,6 +36,8 @@ from src.data_loader import (
     load_processed_weteranow,
     chorzow_processed_paths as processed_paths,
     weteranow_processed_paths,
+    load_processed_rybnik,
+    rybnik_processed_paths,
 )
 from weather_loader import load_weather_forecast, forecast_start
 
@@ -44,10 +46,13 @@ FIXED_TZ = timezone(timedelta(hours=1))
 STATIONS = [
     {"id": "chorzow", "name": "Chorzów", "code": "CH-01", "prefix": "chorzow"},
     {"id": "ruda-weteranow", "name": "Ruda Śląska · Weteranów", "code": "RS-01", "prefix": "ruda"},
+    {"id": "rybnik_pz1", "name": "Rybnik · PZ1", "code": "RY-PZ1", "prefix": "rybnik", "object": "pz1"},
+    {"id": "rybnik_pnb1", "name": "Rybnik · PNB1", "code": "RY-PNB1", "prefix": "rybnik", "object": "pnb1"},
 ]
 
 FLOW_MODELS = ROOT / "models" / "Predykcja przepompowanych ścieków" / "wyeksportowane modele"
 ENERGY_MODELS = ROOT / "models" / "Predykcja zużycia energii" / "wyeksportowane modele"
+FINAL_MODELS = ROOT / "models" / "final" / "wyeksportowane modele"
 
 
 def weteranow_paths(root):
@@ -73,6 +78,11 @@ def station_config(station_id):
 
 def asset_paths(station):
 
+    if "object" in station:
+        obj = station["object"]
+        return [rybnik_processed_paths(ROOT, obj)["flow"]] + [
+            FINAL_MODELS / f"rybnik_przepompowanie_{obj}_{kind}.cbm" for kind in ("median", "q97")
+        ] + [FINAL_MODELS / f"rybnik_energia_{obj}_{kind}.txt" for kind in ("median", "q97")]
     if station["id"] == "ruda-weteranow":
         paths = weteranow_paths(ROOT)
         return [paths[key] for key in ("hourly", "flow_median", "flow_q97", "energy_median", "energy_q97")]
@@ -95,6 +105,8 @@ def fingerprint(station_id):
         paths = processed_paths(ROOT) + asset_paths(station)[1:] + [ROOT / "src" / "business_metrics.py"]
     elif station_id == "ruda-weteranow":
         paths = list(require_weteranow(ROOT).values()) + [ROOT / "src" / "business_metrics.py"]
+    elif "object" in station:
+        paths = list(rybnik_processed_paths(ROOT, station["object"]).values()) + asset_paths(station)[1:] + [ROOT / "src" / "business_metrics.py"]
 
     return tuple((str(p), p.stat().st_mtime_ns, p.stat().st_size) for p in paths)
 
@@ -119,7 +131,7 @@ def load_hourly(report_path):
 
     return frame.loc[:last[-1]]
 
-def flow_features(frame):
+def flow_features(frame, station_id=None):
     index = frame.index.tz_convert(FIXED_TZ)
 
     features = pd.DataFrame(index=frame.index)
@@ -134,9 +146,10 @@ def flow_features(frame):
     features["opad_0h"] = rain
 
     for hours in (2, 3, 6, 12, 24, 48):
-        features[f"opad_{hours}h"] = rain.rolling(hours, min_periods=hours).sum()
+        minimum = 1 if station_id in ("rybnik_pz1", "rybnik_pnb1") else hours
+        features[f"opad_{hours}h"] = rain.rolling(hours, min_periods=minimum).sum()
 
-    features["opad_max6h"] = rain.rolling(6, min_periods=6).max()
+    features["opad_max6h"] = rain.rolling(6, min_periods=1 if station_id in ("rybnik_pz1", "rybnik_pnb1") else 6).max()
 
     for hours in (1, 2, 3, 6, 12, 24):
         features[f"opad_lag_{hours}h"] = rain.shift(hours)
@@ -207,11 +220,16 @@ def load_station(station_id, signature):
 
     station = station_config(station_id)
     report, median_path, q97_path, energy_path, energy_q97_path = asset_paths(station)
-    frame = load_processed_chorzow(ROOT)[0] if station_id == "chorzow" else load_processed_weteranow(ROOT)[0]
+    if station_id == "chorzow":
+        frame = load_processed_chorzow(ROOT)[0]
+    elif station_id == "ruda-weteranow":
+        frame = load_processed_weteranow(ROOT)[0]
+    else:
+        frame = load_processed_rybnik(ROOT, station["object"])[0]
 
     analysis = run_business_analysis(frame, price=CENA_ENERGII)
     detail = analysis["detail"].copy()
-    flow = flow_features(frame)
+    flow = flow_features(frame, station_id)
     energy = energy_features(frame, station_id) if station_id == "chorzow" else None
 
     models = []
@@ -361,7 +379,7 @@ def predict_station_future(history, weather, models, station_id):
     inputs = pd.DataFrame({"opad_mm": rain, "przepompowano_m3": np.nan, "energia_kwh": np.nan})
     outputs = pd.DataFrame(index=inputs.index)
 
-    flow = flow_features(inputs)
+    flow = flow_features(inputs, station_id)
 
     for column, model, names, _ in models:
 
@@ -446,6 +464,31 @@ def weteranow_forecast():
 
     now = pd.Timestamp.now(tz="UTC")
     return _weteranow_forecast(fingerprint("ruda-weteranow"), forecast_start(now).isoformat(), now.floor("6h").isoformat())
+
+
+@lru_cache(maxsize=4)
+def _rybnik_forecast(station_id, signature, day, bucket):
+    detail, _ = load_station(station_id, signature)
+    # Existing Rybnik weather coordinates from src/weather_loader.py.
+    # Both objects use this weather point; there are no separate coordinates in the project.
+    weather = load_weather_forecast(50.114718, 18.533368,
+                                   cache_path=ROOT / "ui" / ".runtime" / "rybnik-weather.json")
+    return predict_station_future(detail, weather, exported_models(station_id, signature), station_id)
+
+
+def rybnik_forecast(station_id):
+    if station_id not in ("rybnik_pz1", "rybnik_pnb1"):
+        raise ValueError("Nieznany obiekt Rybnika.")
+    now = pd.Timestamp.now(tz="UTC")
+    return _rybnik_forecast(station_id, fingerprint(station_id), forecast_start(now).isoformat(), now.floor("6h").isoformat())
+
+
+def station_forecast(station_id):
+    if station_id == "chorzow":
+        return chorzow_forecast()
+    if station_id == "ruda-weteranow":
+        return weteranow_forecast()
+    return rybnik_forecast(station_id)
 
 def energy_totals(frame, price, *, kind="measurement", metric="energy"):
 
@@ -546,6 +589,34 @@ def dashboard(station_id):
             result["weatherForecast"] = {"status": "unavailable", "error": str(error)}
             result["provenance"]["forecastUnavailable"] = str(error)
 
+    elif "object" in station:
+        _, source_info = load_processed_rybnik(ROOT, station["object"])
+        result["source"] = "rybnik-final-models"
+        result["historyRanges"] = [7, 14, 30]
+        result["businessByRange"]["14"] = summarize(window_detail(detail, 14), CENA_ENERGII)
+        result["provenance"].pop("report", None)
+        result["provenance"].update(source_info)
+        result["provenance"]["energyMethod"] = "LightGBM obiektu z predykcją pompowania CatBoost i opadami; oddzielny pomiar kWh z raportu."
+        result["provenance"]["weatherCoordinates"] = {"latitude": 50.114718, "longitude": 18.533368,
+                                                        "source": "Punkt Rybnika z src/weather_loader.py, wspólny dla PZ1 i PNB1."}
+        result["historyTotals"] = {}
+        for days in (7, 14, 30):
+            window = window_detail(detail, days)
+            result["historyTotals"][str(days)] = energy_totals(window, CENA_ENERGII)
+            result["historyTotals"][str(days)].update({
+                "pumpingM3": clean(window["przepompowano_m3"].sum(min_count=1)),
+                "pumpingHours": int(window["przepompowano_m3"].count())})
+        try:
+            future, projected, weather_info = rybnik_forecast(station_id)
+            result["forecast"] = records(future, "time")
+            result["weatherForecast"] = weather_info
+            result["forecastTotals"] = energy_totals(projected, CENA_ENERGII, kind="prediction")
+            result["forecastTotals"].update({"pumpingM3": clean(future["prognoza"].sum(min_count=1)),
+                                             "pumpingHours": int(future["prognoza"].count())})
+            result["provenance"].pop("forecastUnavailable", None)
+        except Exception as error:
+            result["weatherForecast"] = {"status": "unavailable", "error": str(error)}
+            result["provenance"]["forecastUnavailable"] = str(error)
     return result
 
 def select_cost_dates(frame, start_date=None, end_date=None):
@@ -596,7 +667,7 @@ def cost_scenarios(station_id, days, prices, period="history", metric="wet_exces
     if period == "forecast":
         if days != 30:
             raise ValueError("Prognoza dotyczy 30 dni.")
-        _, visible, _ = weteranow_forecast() if station_id == "ruda-weteranow" else chorzow_forecast()
+        _, visible, _ = station_forecast(station_id)
 
     else:
         visible = window_detail(detail, days)

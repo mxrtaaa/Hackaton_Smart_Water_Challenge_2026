@@ -216,3 +216,41 @@ for stacja in ("weteranow", "zmp"):
         print("\nMokre godziny z wyceną:", int(df.loc[wet, "nadwyzka_kwh"].count()), "/", int(wet.sum()))
         print("Bilans kosztu energii w mokrych godzinach [zł]:", round(df["bilans_zl"].sum(), 2))
         df.to_parquet(folder / "godziny.parquet")
+
+
+#########################
+# RYBNIK
+#########################
+
+RYBNIK = ROOT / "data" / "final"
+
+
+opady = pd.read_parquet(RYBNIK / "suma_opadow.parquet")
+opady = set_timezone(opady)
+opady["suma_opadu_mm"] = pd.to_numeric(opady["suma_opadu_mm"], errors="coerce")
+opady_h = (
+    opady["suma_opadu_mm"]
+    .groupby(level=0).sum(min_count=1)
+    .resample("h").sum(min_count=1)
+    .rename("opad_mm")
+)
+
+df_pnb1 = pd.read_parquet(RYBNIK / "godzinowe-pnb1-final.parquet")
+df_pz1 = pd.read_parquet(RYBNIK / "godzinowe-pz1-final.parquet")
+
+for stacja in ("PNB1", "PZ1"):
+    folder = REPORTS / f"rybnik-{stacja}"
+    folder.mkdir(parents=True, exist_ok=True)
+    print(f"\n========== RYBNIK: {stacja.upper()} ==========")
+
+    if stacja == "PNB1":
+        wynik = run_business_analysis(df_pnb1, price=CENA_KWH)
+    else:
+        wynik = run_business_analysis(df_pz1, price=CENA_KWH)
+    print("\nPodsumowanie biznesowe:")
+    print(wynik["summary"])
+    print("\nNajdroższe epizody:")
+    print(wynik["episodes"].head(5))
+    wynik["detail"].to_parquet(folder / "godziny.parquet")
+    wynik["episodes"].to_csv(folder / "epizody.csv")
+    wynik["monthly"].to_csv(folder / "miesiace.csv")
