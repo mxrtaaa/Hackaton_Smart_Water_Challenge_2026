@@ -40,7 +40,7 @@ const server = http.createServer(async (req, res) => {
         if (Buffer.byteLength(body) > 16384) throw new Error('Zbyt duże żądanie.');
       }
       const input = JSON.parse(body);
-      if (input.station !== 'ruda-weteranow' && (process.env.UI_DATA_FILE || process.env.UI_SOURCE === 'demo')) {
+      if ((!input.station || input.station === 'chorzow') && (process.env.UI_DATA_FILE || process.env.UI_SOURCE === 'demo')) {
         throw new Error('Wycena Python wymaga domyślnego źródła modeli i raportów.');
       }
       const result = await getModelCosts(input.station, input.days, input.prices, input.period, input.metric, {startDate:input.startDate,endDate:input.endDate,energyBasis:input.energyBasis});
@@ -58,7 +58,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/dashboard') {
       let data;
 
-      if (process.env.UI_DATA_FILE && url.searchParams.get('station') !== 'ruda-weteranow') {
+      if (process.env.UI_DATA_FILE && (!url.searchParams.get('station') || url.searchParams.get('station') === 'chorzow')) {
         const snapshot = JSON.parse(
           await readFile(process.env.UI_DATA_FILE, 'utf8')
         );

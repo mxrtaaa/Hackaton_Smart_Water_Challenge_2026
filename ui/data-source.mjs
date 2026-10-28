@@ -2,7 +2,7 @@
 import { getModelDashboard } from './real-data-source.mjs';
 
 export function getDashboard(station = 'chorzow') {
-    if (station === 'ruda-weteranow') {
+    if (station !== 'chorzow') {
         return getModelDashboard(station);
     }
 
