@@ -56,7 +56,7 @@ def przygotuj_dane_energia():
     wyniki = []
     for df in [df_ch_energia_pz1, df_ch_energia_pnb1]: 
         # ENERGIA
-        df_energia = fix_tz_local(df)
+        '''df_energia = fix_tz_local(df)
 
         df_energia["Wartosc_kwh"] = pd.to_numeric(
             df_energia["Wartosc_kwh"]
@@ -87,11 +87,11 @@ def przygotuj_dane_energia():
             .groupby(level=0).sum(min_count=1)
             .resample("1h").sum(min_count=1)
             .rename("suma_opadu_mm")
-        )
+        )'''
 
         # ŁĄCZENIE
-        df_lgbm = df_1h.join(opady_h, how="left")
-        df_lgbm["suma_opadu_mm"] = df_lgbm["suma_opadu_mm"].fillna(0.0)
+        df_lgbm = df["energia_kwh"].join(df["opad_mm"], how="left")
+        df_lgbm["opad_mm"] = df_lgbm["opad_mm"].fillna(0.0)
 
         # CECHY KALENDARZOWE
         df_lgbm["hour"] = df_lgbm.index.hour
@@ -106,7 +106,7 @@ def przygotuj_dane_energia():
         df_lgbm["month_cos"] = np.cos(2 * np.pi * (df_lgbm.index.month - 1) / 12)
 
         # CECHY OPADOWE
-        r = df_lgbm["suma_opadu_mm"]
+        r = df_lgbm["opad_mm"]
 
         for k in [1, 2, 3, 6, 12, 24, 48, 72, 168]:
             df_lgbm[f"opad_{k}h"] = (
