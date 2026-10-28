@@ -6,12 +6,12 @@ from lightgbm import LGBMRegressor
 
 from energia_rybnik_dane import przygotuj_dane as przygotuj_dane_energia
 
-X_energia, Y_energia,_,_ = przygotuj_dane_energia()
+_, _, X_energia, Y_energia = przygotuj_dane_energia()
 models_path = Path.cwd().parents[0]
 sys.path.append(str(models_path / "Predykcja przepompowanych ścieków"))
 from przepompowanie_rybnik_dane import przygotuj_dane_przepompowanie
 
-X_przeplyw, Y_przeplyw,_,_ = przygotuj_dane_przepompowanie()
+_, _, X_przeplyw , Y_przeplyw = przygotuj_dane_przepompowanie()
 
 features = [
     # Kalendarz
@@ -44,13 +44,13 @@ X_test = X.iloc[train_end:]
 y_train = y.iloc[:train_end]
 y_test = y.iloc[train_end:]
 
-best_params_l1 = {'learning_rate': 0.04061780271024422, 'num_leaves': 38, 'min_child_samples': 24, 'subsample': 0.743921700216187, 'colsample_bytree': 0.7732833512896126, 'reg_alpha': 0.0036288325466427265, 'reg_lambda': 0.014766552392796261}
+best_params_l1 = {'learning_rate': 0.06359628170590019, 'num_leaves': 34, 'min_child_samples': 28, 'subsample': 0.8342191329162119, 'colsample_bytree': 0.9173441667077377, 'reg_alpha': 0.11165213389357362, 'reg_lambda': 0.11381890343543603}
 
 # 2. Finalny trening na sztywnej liczbie drzew
 final_lgbm_l1 = LGBMRegressor(
     objective="l1",
     **best_params_l1,
-    n_estimators=140,   # dokładnie tyle, ile dało minimum błędu
+    n_estimators=120,   # dokładnie tyle, ile dało minimum błędu
     random_state=42,
     n_jobs=-1,
     verbosity=-1
@@ -63,13 +63,13 @@ final_mae = np.mean(np.abs(y_test - y_pred_test))
 print(f"\nOstateczne MAE na zbiorze TESTOWYM: {final_mae:.4f}")
 
 
-best_params_q97 = {'learning_rate': 0.08020337033817654, 'num_leaves': 22, 'min_child_samples': 48, 'subsample': 0.6434378819004541, 'colsample_bytree': 0.6590293440773054, 'reg_alpha': 3.7080310739472964, 'reg_lambda': 1.6219681845800913}
+best_params_q97 = {'learning_rate': 0.012108365022107858, 'num_leaves': 14, 'min_child_samples': 35, 'subsample': 0.903337368450005, 'colsample_bytree': 0.89176728898391, 'reg_alpha': 0.043687763542647064, 'reg_lambda': 0.009645413025526581}
 
 final_lgbm_q97 = LGBMRegressor(
     objective="quantile",
     alpha=0.993,
     **best_params_q97,
-    n_estimators=170,
+    n_estimators=300,
     random_state=42,
     n_jobs=-1,
     verbosity=-1
