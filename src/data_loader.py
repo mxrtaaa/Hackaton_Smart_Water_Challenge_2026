@@ -126,22 +126,31 @@ def load_processed_weteranow(root):
         "historyRule": "7/14/30 dni wstecz od ostatniej pełnej godziny archiwum Weteranów; braków nie interpolujemy.",
     }
 
-def rybnik_processed_paths(root, object_id):
-    """Osobne logi i raporty PZ1/PNB1; bez zamieniania obiektów."""
+def rybnik_processed_paths(root, object_id, *, source="logs"):
+    """Osobne źródła PZ1/PNB1: logi lub gotowe tabele godzinowe final."""
     if object_id not in ("pz1", "pnb1"):
         raise ValueError("Nieznany obiekt Rybnika.")
     data = Path(root) / "data" / "processed" / "Rybnik"
+    if source == "hourly":
+        return {"hourly": data / f"godzinowe-{object_id}-final.parquet",
+                "weather": data / "suma_opadow.parquet"}
+    if source != "logs":
+        raise ValueError("Nieznane źródło danych Rybnika.")
     return {"flow": data / f"{object_id}-2024.parquet",
             "energy": data / f"raport-{object_id}.parquet",
             "weather": data / "suma_opadow.parquet"}
 
 
-def load_processed_rybnik(root, object_id):
-    """Rzeczywiste godziny z logu licznika, raportu kWh i archiwum opadów.
+def load_processed_rybnik(root, object_id, *, source="logs"):
+    """Godzinowe pomiary Rybnika, bez uruchamiania kodu treningu modeli.
 
-    Korzysta z istniejących funkcji przygotowania finałowych danych. Nie używa
-    niekompletnych godzinowe-*-final.parquet ani kodu treningu modeli.
+    Domyślnie przygotowuje dane z logów i raportów istniejącymi funkcjami.
+    source="hourly" wybiera gotowe tabele final używane przez UI.
     """
+    if source == "hourly":
+        return _load_hourly_rybnik(root, object_id)
+    if source != "logs":
+        raise ValueError("Nieznane źródło danych Rybnika.")
     if __package__:
         from .wczytaj_rybnik_final import ustaw_czas, seria_godzinowa
     else:
@@ -202,6 +211,53 @@ def load_processed_rybnik(root, object_id):
         "rawEnergyEnd": energy.index.max().isoformat(),
         "validityCutoff": cutoff.isoformat(), "excludedLastPartialHour": True,
         "note": "Źródłem są log i raport obiektu; niekompletne finałowe tabele godzinowe nie są używane.",
+    }
+
+
+def _load_hourly_rybnik(root, object_id):
+    """Historia UI z tabel final; koniec wymaga jednoczesnego pomiaru m³ i kWh.
+
+    Gotowych przyrostów nie różnicujemy ponownie. Opady łączymy z archiwum po
+    godzinie; braków nie interpolujemy i nie zastępujemy predykcjami ani zerem.
+    """
+    root = Path(root)
+    paths = rybnik_processed_paths(root, object_id, source="hourly")
+    missing = [str(p.relative_to(root)) for p in paths.values() if not p.is_file()]
+    if missing:
+        raise FileNotFoundError("Brak plików Rybnika: " + ", ".join(missing))
+    columns = ["przepompowano_m3", "energia_kwh"]
+    frame = pd.read_parquet(paths["hourly"], columns=columns)
+    if (not isinstance(frame.index, pd.DatetimeIndex) or frame.index.tz is None
+            or frame.index.has_duplicates or frame.index.hasnans):
+        raise ValueError("Dane godzinowe Rybnika muszą mieć unikalny indeks czasu ze strefą.")
+    if not frame.index.equals(frame.index.floor("h")):
+        raise ValueError("Dane Rybnika muszą mieć znaczniki pełnych godzin.")
+    frame = frame.sort_index().asfreq("h").apply(pd.to_numeric, errors="coerce")
+    frame = frame.where(frame.ge(0) & frame.lt(float("inf")))
+    measured = frame.dropna(subset=columns)
+    if measured.empty:
+        raise ValueError("Brak godzinowych pomiarów m³ i kWh Rybnika w tej samej godzinie.")
+    frame = frame.loc[:measured.index[-1]]
+    rain = pd.read_parquet(paths["weather"])
+    if "Data_czas" in rain.columns:
+        rain = rain.set_index("Data_czas")
+    if (not isinstance(rain.index, pd.DatetimeIndex) or rain.index.tz is None
+            or rain.index.has_duplicates or rain.index.hasnans):
+        raise ValueError("Opady historyczne Rybnika muszą mieć unikalny indeks czasu ze strefą.")
+    if not rain.index.equals(rain.index.floor("h")):
+        raise ValueError("Opady historyczne Rybnika muszą mieć krok godzinowy.")
+    rain["suma_opadu_mm"] = pd.to_numeric(rain["suma_opadu_mm"], errors="coerce")
+    if rain["suma_opadu_mm"].lt(0).any() or rain["suma_opadu_mm"].eq(float("inf")).any():
+        raise ValueError("Niepoprawne opady historyczne Rybnika.")
+    frame = frame.join(rain["suma_opadu_mm"].rename("opad_mm"))
+    return frame, {
+        "files": [{"file": str(p.relative_to(root)), "role": role} for p, role in
+                  ((paths["hourly"], "Gotowe historyczne przyrosty m³ i godzinowe kWh, bez ponownego różnicowania"),
+                   (paths["weather"], "Archiwalne opady godzinowe"))],
+        "historyRule": "7/14/30 dni wstecz od ostatniej godziny z jednoczesnym pomiarem m³ i kWh w tabeli final. Braki wewnątrz zakresu pozostają nieznane.",
+        "lastMeasurements": {column: frame[column].last_valid_index().isoformat() for column in columns},
+        "excludedLastPartialHour": False,
+        "note": "Historia z godzinowe-*-final.parquet i suma_opadow.parquet; brak pomiaru energii nie jest zastępowany predykcją.",
     }
 
 

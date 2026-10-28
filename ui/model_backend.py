@@ -80,7 +80,7 @@ def asset_paths(station):
 
     if "object" in station:
         obj = station["object"]
-        return [rybnik_processed_paths(ROOT, obj)["hourly"]] + [
+        return [rybnik_processed_paths(ROOT, obj, source="hourly")["hourly"]] + [
             FINAL_MODELS / f"rybnik_przepompowanie_{obj}_{kind}.cbm" for kind in ("median", "q97")
         ] + [FINAL_MODELS / f"rybnik_energia_{obj}_{kind}.txt" for kind in ("median", "q97")]
     if station["id"] == "ruda-weteranow":
@@ -106,7 +106,7 @@ def fingerprint(station_id):
     elif station_id == "ruda-weteranow":
         paths = list(require_weteranow(ROOT).values()) + [ROOT / "src" / "business_metrics.py"]
     elif "object" in station:
-        paths = list(rybnik_processed_paths(ROOT, station["object"]).values()) + asset_paths(station)[1:] + [ROOT / "src" / "business_metrics.py"]
+        paths = list(rybnik_processed_paths(ROOT, station["object"], source="hourly").values()) + asset_paths(station)[1:] + [ROOT / "src" / "business_metrics.py"]
 
     return tuple((str(p), p.stat().st_mtime_ns, p.stat().st_size) for p in paths)
 
@@ -226,7 +226,7 @@ def load_station(station_id, signature):
     elif station_id == "ruda-weteranow":
         frame = load_processed_weteranow(ROOT)[0]
     else:
-        frame = load_processed_rybnik(ROOT, station["object"])[0]
+        frame = load_processed_rybnik(ROOT, station["object"], source="hourly")[0]
 
     analysis = run_business_analysis(frame, price=CENA_ENERGII)
     detail = analysis["detail"].copy()
@@ -592,7 +592,7 @@ def dashboard(station_id):
             result["provenance"]["forecastUnavailable"] = str(error)
 
     elif "object" in station:
-        _, source_info = load_processed_rybnik(ROOT, station["object"])
+        _, source_info = load_processed_rybnik(ROOT, station["object"], source="hourly")
         result["source"] = "rybnik-final-models"
         result["historyRanges"] = [7, 14, 30]
         result["businessByRange"]["14"] = summarize(window_detail(detail, 14), CENA_ENERGII)
